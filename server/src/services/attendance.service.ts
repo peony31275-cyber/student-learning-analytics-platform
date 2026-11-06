@@ -11,7 +11,9 @@ export async function getCourseAttendance(user: AuthUser, courseId: string, date
   const [enrollments, records] = await Promise.all([
     prisma.enrollment.findMany({
       where: { courseId, status: 'ACTIVE' },
-      select: { student: { select: { id: true, studentNumber: true, firstName: true, lastName: true } } },
+      select: {
+        student: { select: { id: true, studentNumber: true, firstName: true, lastName: true } },
+      },
       orderBy: [{ student: { lastName: 'asc' } }, { student: { firstName: 'asc' } }],
     }),
     prisma.attendance.findMany({ where: { courseId, date } }),
@@ -22,7 +24,12 @@ export async function getCourseAttendance(user: AuthUser, courseId: string, date
     date: date.toISOString().slice(0, 10),
     rows: enrollments.map(({ student }) => {
       const r = byStudent.get(student.id);
-      return { student, attendanceId: r?.id ?? null, status: r?.status ?? null, note: r?.note ?? null };
+      return {
+        student,
+        attendanceId: r?.id ?? null,
+        status: r?.status ?? null,
+        note: r?.note ?? null,
+      };
     }),
   };
 }
@@ -51,7 +58,11 @@ export async function listSessions(user: AuthUser, courseId: string) {
  * keyed on the (studentId, courseId, date) unique constraint, so re-submitting
  * the same day is idempotent and never creates duplicates.
  */
-export async function recordAttendance(user: AuthUser, courseId: string, input: BulkAttendanceInput) {
+export async function recordAttendance(
+  user: AuthUser,
+  courseId: string,
+  input: BulkAttendanceInput,
+) {
   await assertCourseAccess(prisma, user, courseId, { manage: true });
   const tomorrow = new Date();
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
@@ -64,13 +75,23 @@ export async function recordAttendance(user: AuthUser, courseId: string, input: 
   });
   const enrolledIds = new Set(enrolled.map((e) => e.studentId));
   const notEnrolled = studentIds.filter((id) => !enrolledIds.has(id));
-  if (notEnrolled.length) throw badRequest('Some students are not actively enrolled in this course', { studentIds: notEnrolled });
+  if (notEnrolled.length)
+    throw badRequest('Some students are not actively enrolled in this course', {
+      studentIds: notEnrolled,
+    });
 
   await prisma.$transaction(
     input.records.map((r) =>
       prisma.attendance.upsert({
         where: { studentId_courseId_date: { studentId: r.studentId, courseId, date: input.date } },
-        create: { studentId: r.studentId, courseId, date: input.date, status: r.status, note: r.note ?? null, recordedById: user.id },
+        create: {
+          studentId: r.studentId,
+          courseId,
+          date: input.date,
+          status: r.status,
+          note: r.note ?? null,
+          recordedById: user.id,
+        },
         update: { status: r.status, note: r.note ?? null, recordedById: user.id },
       }),
     ),
@@ -92,7 +113,13 @@ export async function getStudentAttendance(
       ...(q.courseId && { courseId: q.courseId }),
       ...((q.from || q.to) && { date: { gte: q.from, lte: q.to } }),
     },
-    select: { id: true, date: true, status: true, note: true, course: { select: { id: true, code: true, name: true } } },
+    select: {
+      id: true,
+      date: true,
+      status: true,
+      note: true,
+      course: { select: { id: true, code: true, name: true } },
+    },
     orderBy: { date: 'desc' },
   });
   return records.map((r) => ({ ...r, date: r.date.toISOString().slice(0, 10) }));

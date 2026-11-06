@@ -31,7 +31,8 @@ export function createApp() {
   );
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser());
-  if (!isTest) app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === '/api/health' } }));
+  if (!isTest)
+    app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === '/api/health' } }));
 
   app.get('/api/health', async (_req, res) => {
     await prisma.$queryRaw`SELECT 1`;

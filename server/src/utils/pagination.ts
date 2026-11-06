@@ -21,8 +21,18 @@ export interface Paginated<T> {
 }
 
 /** Offset pagination arguments for Prisma. */
-export const toSkipTake = ({ page, pageSize }: Pagination) => ({ skip: (page - 1) * pageSize, take: pageSize });
+export const toSkipTake = ({ page, pageSize }: Pagination) => ({
+  skip: (page - 1) * pageSize,
+  take: pageSize,
+});
 
-export function buildPage<T>(items: T[], total: number, { page, pageSize }: Pagination): Paginated<T> {
-  return { items, meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) } };
+export function buildPage<T>(
+  items: T[],
+  total: number,
+  { page, pageSize }: Pagination,
+): Paginated<T> {
+  return {
+    items,
+    meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) },
+  };
 }

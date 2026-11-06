@@ -20,7 +20,11 @@ function send(res: Response, status: number, error: ErrorBody) {
  */
 export function errorHandler(err: unknown, req: Request, res: Response, _next: NextFunction) {
   if (err instanceof AppError) {
-    return send(res, err.statusCode, { code: err.code, message: err.message, details: err.details });
+    return send(res, err.statusCode, {
+      code: err.code,
+      message: err.message,
+      details: err.details,
+    });
   }
 
   if (err instanceof ZodError) {
@@ -34,13 +38,19 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     // Unique constraint: usually a concurrent request that slipped past a service-level check.
     if (err.code === 'P2002') {
-      return send(res, 409, { code: 'CONFLICT', message: 'A record with these values already exists' });
+      return send(res, 409, {
+        code: 'CONFLICT',
+        message: 'A record with these values already exists',
+      });
     }
     if (err.code === 'P2025') {
       return send(res, 404, { code: 'NOT_FOUND', message: 'Resource not found' });
     }
     if (err.code === 'P2003') {
-      return send(res, 409, { code: 'CONFLICT', message: 'Operation violates a data relationship' });
+      return send(res, 409, {
+        code: 'CONFLICT',
+        message: 'Operation violates a data relationship',
+      });
     }
   }
 

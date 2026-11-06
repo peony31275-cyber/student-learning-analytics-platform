@@ -112,7 +112,10 @@ const courseFields = {
     .transform((s) => s.toUpperCase()),
   name: z.string().trim().min(2).max(120),
   description: z.string().trim().max(1000).nullable().optional(),
-  term: z.string().trim().regex(/^\d{4}-(Spring|Summer|Fall|Winter)$/, 'Term must look like 2026-Fall'),
+  term: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-(Spring|Summer|Fall|Winter)$/, 'Term must look like 2026-Fall'),
   credits: z.number().int().min(0).max(10).default(3),
 };
 
@@ -144,7 +147,10 @@ const assessmentFields = {
   type: z.enum(AssessmentType),
   maxScore: z.number().positive().max(10000),
   weight: z.number().min(0).max(100).default(1),
-  dueDate: z.iso.datetime({ offset: true }).or(z.iso.date()).transform((s) => new Date(s)),
+  dueDate: z.iso
+    .datetime({ offset: true })
+    .or(z.iso.date())
+    .transform((s) => new Date(s)),
 };
 export const createAssessmentSchema = z.object(assessmentFields);
 export const updateAssessmentSchema = z
@@ -159,17 +165,23 @@ export const gradeEntrySchema = z
     status: z.enum(GradeStatus).default('SUBMITTED'),
     feedback: z.string().trim().max(2000).nullable().optional(),
   })
-  .refine((g) => (g.status === 'SUBMITTED' || g.status === 'LATE' ? typeof g.score === 'number' : true), {
-    message: 'score is required for SUBMITTED or LATE work',
-    path: ['score'],
-  });
+  .refine(
+    (g) => (g.status === 'SUBMITTED' || g.status === 'LATE' ? typeof g.score === 'number' : true),
+    {
+      message: 'score is required for SUBMITTED or LATE work',
+      path: ['score'],
+    },
+  );
 
 export const bulkGradesSchema = z.object({
   grades: z
     .array(gradeEntrySchema)
     .min(1)
     .max(500)
-    .refine((arr) => new Set(arr.map((g) => g.studentId)).size === arr.length, 'Duplicate studentId in request'),
+    .refine(
+      (arr) => new Set(arr.map((g) => g.studentId)).size === arr.length,
+      'Duplicate studentId in request',
+    ),
   reason: z.string().trim().max(300).optional(),
 });
 
@@ -190,7 +202,10 @@ export const bulkAttendanceSchema = z.object({
     )
     .min(1)
     .max(500)
-    .refine((arr) => new Set(arr.map((r) => r.studentId)).size === arr.length, 'Duplicate studentId in request'),
+    .refine(
+      (arr) => new Set(arr.map((r) => r.studentId)).size === arr.length,
+      'Duplicate studentId in request',
+    ),
 });
 
 export const studentAttendanceQuery = z.object({

@@ -48,7 +48,10 @@ export const schoolController = {
 // ── Students ──
 export const studentsController = {
   list: async (req: Request, res: Response) => {
-    paginated(res, await students.listStudents(currentUser(req), v.listStudentsQuery.parse(req.query)));
+    paginated(
+      res,
+      await students.listStudents(currentUser(req), v.listStudentsQuery.parse(req.query)),
+    );
   },
   directory: async (req: Request, res: Response) => {
     ok(res, await students.directory(currentUser(req), v.directoryQuery.parse(req.query)));
@@ -57,33 +60,59 @@ export const studentsController = {
     ok(res, await students.getStudent(currentUser(req), id(req)));
   },
   create: async (req: Request, res: Response) => {
-    created(res, await students.createStudent(currentUser(req), v.createStudentSchema.parse(req.body)));
+    created(
+      res,
+      await students.createStudent(currentUser(req), v.createStudentSchema.parse(req.body)),
+    );
   },
   update: async (req: Request, res: Response) => {
-    ok(res, await students.updateStudent(currentUser(req), id(req), v.updateStudentSchema.parse(req.body)));
+    ok(
+      res,
+      await students.updateStudent(
+        currentUser(req),
+        id(req),
+        v.updateStudentSchema.parse(req.body),
+      ),
+    );
   },
   grades: async (req: Request, res: Response) => {
     const { courseId } = v.studentGradesQuery.parse(req.query);
     ok(res, await grades.getStudentGrades(currentUser(req), id(req), courseId));
   },
   attendance: async (req: Request, res: Response) => {
-    ok(res, await attendance.getStudentAttendance(currentUser(req), id(req), v.studentAttendanceQuery.parse(req.query)));
+    ok(
+      res,
+      await attendance.getStudentAttendance(
+        currentUser(req),
+        id(req),
+        v.studentAttendanceQuery.parse(req.query),
+      ),
+    );
   },
 };
 
 // ── Courses ──
 export const coursesController = {
   list: async (req: Request, res: Response) => {
-    paginated(res, await courses.listCourses(currentUser(req), v.listCoursesQuery.parse(req.query)));
+    paginated(
+      res,
+      await courses.listCourses(currentUser(req), v.listCoursesQuery.parse(req.query)),
+    );
   },
   get: async (req: Request, res: Response) => {
     ok(res, await courses.getCourse(currentUser(req), id(req)));
   },
   create: async (req: Request, res: Response) => {
-    created(res, await courses.createCourse(currentUser(req), v.createCourseSchema.parse(req.body)));
+    created(
+      res,
+      await courses.createCourse(currentUser(req), v.createCourseSchema.parse(req.body)),
+    );
   },
   update: async (req: Request, res: Response) => {
-    ok(res, await courses.updateCourse(currentUser(req), id(req), v.updateCourseSchema.parse(req.body)));
+    ok(
+      res,
+      await courses.updateCourse(currentUser(req), id(req), v.updateCourseSchema.parse(req.body)),
+    );
   },
   remove: async (req: Request, res: Response) => {
     await courses.deleteCourse(currentUser(req), id(req));
@@ -96,14 +125,28 @@ export const coursesController = {
     ok(res, await grades.listAssessments(currentUser(req), id(req)));
   },
   createAssessment: async (req: Request, res: Response) => {
-    created(res, await grades.createAssessment(currentUser(req), id(req), v.createAssessmentSchema.parse(req.body)));
+    created(
+      res,
+      await grades.createAssessment(
+        currentUser(req),
+        id(req),
+        v.createAssessmentSchema.parse(req.body),
+      ),
+    );
   },
   getAttendance: async (req: Request, res: Response) => {
     const { date } = v.attendanceDateQuery.parse(req.query);
     ok(res, await attendance.getCourseAttendance(currentUser(req), id(req), date));
   },
   recordAttendance: async (req: Request, res: Response) => {
-    ok(res, await attendance.recordAttendance(currentUser(req), id(req), v.bulkAttendanceSchema.parse(req.body)));
+    ok(
+      res,
+      await attendance.recordAttendance(
+        currentUser(req),
+        id(req),
+        v.bulkAttendanceSchema.parse(req.body),
+      ),
+    );
   },
   attendanceSessions: async (req: Request, res: Response) => {
     ok(res, await attendance.listSessions(currentUser(req), id(req)));
@@ -113,11 +156,18 @@ export const coursesController = {
 // ── Enrollments ──
 export const enrollmentsController = {
   list: async (req: Request, res: Response) => {
-    paginated(res, await enrollments.listEnrollments(currentUser(req), v.listEnrollmentsQuery.parse(req.query)));
+    paginated(
+      res,
+      await enrollments.listEnrollments(currentUser(req), v.listEnrollmentsQuery.parse(req.query)),
+    );
   },
   create: async (req: Request, res: Response) => {
     const { studentId, courseId } = v.createEnrollmentSchema.parse(req.body);
-    const { enrollment, reactivated } = await enrollments.enroll(currentUser(req), studentId, courseId);
+    const { enrollment, reactivated } = await enrollments.enroll(
+      currentUser(req),
+      studentId,
+      courseId,
+    );
     if (reactivated) ok(res, enrollment);
     else created(res, enrollment);
   },
@@ -130,7 +180,14 @@ export const enrollmentsController = {
 // ── Assessments & grades ──
 export const assessmentsController = {
   update: async (req: Request, res: Response) => {
-    ok(res, await grades.updateAssessment(currentUser(req), id(req), v.updateAssessmentSchema.parse(req.body)));
+    ok(
+      res,
+      await grades.updateAssessment(
+        currentUser(req),
+        id(req),
+        v.updateAssessmentSchema.parse(req.body),
+      ),
+    );
   },
   remove: async (req: Request, res: Response) => {
     await grades.deleteAssessment(currentUser(req), id(req));
@@ -140,12 +197,21 @@ export const assessmentsController = {
     ok(res, await grades.getGradebook(currentUser(req), id(req)));
   },
   upsertGrades: async (req: Request, res: Response) => {
-    ok(res, await grades.upsertGrades(currentUser(req), id(req), v.bulkGradesSchema.parse(req.body)));
+    ok(
+      res,
+      await grades.upsertGrades(currentUser(req), id(req), v.bulkGradesSchema.parse(req.body)),
+    );
   },
 };
 
 export const gradesController = {
   history: async (req: Request, res: Response) => {
-    ok(res, await grades.getGradeHistory(currentUser(req), z.object({ id: z.uuid() }).parse(req.params).id));
+    ok(
+      res,
+      await grades.getGradeHistory(
+        currentUser(req),
+        z.object({ id: z.uuid() }).parse(req.params).id,
+      ),
+    );
   },
 };

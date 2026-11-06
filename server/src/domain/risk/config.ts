@@ -9,7 +9,12 @@ import { z } from 'zod';
  * level with two thresholds. Everything is plain arithmetic a teacher can
  * check by hand: this is a transparent scoring rubric, not a predictive model.
  */
-const tier = (defaults: { warn: number; critical: number; warnPoints: number; criticalPoints: number }) =>
+const tier = (defaults: {
+  warn: number;
+  critical: number;
+  warnPoints: number;
+  criticalPoints: number;
+}) =>
   z
     .object({
       enabled: z.boolean().default(true),
@@ -45,25 +50,73 @@ export const riskConfigSchema = z
     rules: z
       .object({
         /** Average % over the most recent `recentWindow` graded assessments. */
-        recentPerformance: belowTier({ warn: 70, critical: 60, warnPoints: 15, criticalPoints: 30 }).default({
-          enabled: true, warn: 70, critical: 60, warnPoints: 15, criticalPoints: 30,
+        recentPerformance: belowTier({
+          warn: 70,
+          critical: 60,
+          warnPoints: 15,
+          criticalPoints: 30,
+        }).default({
+          enabled: true,
+          warn: 70,
+          critical: 60,
+          warnPoints: 15,
+          criticalPoints: 30,
         }),
         /** Drop (percentage points) of the recent average vs. the earlier average. */
-        decliningTrend: dropTier({ warn: 5, critical: 10, warnPoints: 10, criticalPoints: 20 }).default({
-          enabled: true, warn: 5, critical: 10, warnPoints: 10, criticalPoints: 20,
+        decliningTrend: dropTier({
+          warn: 5,
+          critical: 10,
+          warnPoints: 10,
+          criticalPoints: 20,
+        }).default({
+          enabled: true,
+          warn: 5,
+          critical: 10,
+          warnPoints: 10,
+          criticalPoints: 20,
         }),
         /** % of class meetings attended (late counts as attended, excused is not counted). */
-        attendance: belowTier({ warn: 90, critical: 80, warnPoints: 10, criticalPoints: 25 }).default({
-          enabled: true, warn: 90, critical: 80, warnPoints: 10, criticalPoints: 25,
+        attendance: belowTier({
+          warn: 90,
+          critical: 80,
+          warnPoints: 10,
+          criticalPoints: 25,
+        }).default({
+          enabled: true,
+          warn: 90,
+          critical: 80,
+          warnPoints: 10,
+          criticalPoints: 25,
         }),
         /** % of graded work that was submitted (excused is not counted). */
-        completion: belowTier({ warn: 90, critical: 75, warnPoints: 10, criticalPoints: 25 }).default({
-          enabled: true, warn: 90, critical: 75, warnPoints: 10, criticalPoints: 25,
+        completion: belowTier({
+          warn: 90,
+          critical: 75,
+          warnPoints: 10,
+          criticalPoints: 25,
+        }).default({
+          enabled: true,
+          warn: 90,
+          critical: 75,
+          warnPoints: 10,
+          criticalPoints: 25,
         }),
       })
       .default({
-        recentPerformance: { enabled: true, warn: 70, critical: 60, warnPoints: 15, criticalPoints: 30 },
-        decliningTrend: { enabled: true, warn: 5, critical: 10, warnPoints: 10, criticalPoints: 20 },
+        recentPerformance: {
+          enabled: true,
+          warn: 70,
+          critical: 60,
+          warnPoints: 15,
+          criticalPoints: 30,
+        },
+        decliningTrend: {
+          enabled: true,
+          warn: 5,
+          critical: 10,
+          warnPoints: 10,
+          criticalPoints: 20,
+        },
         attendance: { enabled: true, warn: 90, critical: 80, warnPoints: 10, criticalPoints: 25 },
         completion: { enabled: true, warn: 90, critical: 75, warnPoints: 10, criticalPoints: 25 },
       }),

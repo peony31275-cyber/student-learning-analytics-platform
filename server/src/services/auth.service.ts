@@ -79,7 +79,10 @@ export async function login({ email, password }: LoginInput) {
 }
 
 export async function registerStudent(input: RegisterInput) {
-  const existing = await prisma.user.findUnique({ where: { email: input.email }, select: { id: true } });
+  const existing = await prisma.user.findUnique({
+    where: { email: input.email },
+    select: { id: true },
+  });
   if (existing) throw conflict('An account with this email already exists');
 
   const profile = await prisma.studentProfile.findFirst({
@@ -90,7 +93,9 @@ export async function registerStudent(input: RegisterInput) {
     select: { id: true, schoolId: true, userId: true },
   });
   if (!profile) {
-    throw badRequest('No student record matches this student number and email. Contact your school.');
+    throw badRequest(
+      'No student record matches this student number and email. Contact your school.',
+    );
   }
   if (profile.userId) throw conflict('This student record already has an account');
 

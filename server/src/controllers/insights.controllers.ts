@@ -5,7 +5,11 @@ import * as analytics from '../services/analytics.service.js';
 import * as risk from '../services/risk.service.js';
 import { ok, paginated } from '../utils/http.js';
 import { idParam, uuid } from '../validators/common.js';
-import { listAlertsQuery, recalculateSchema, updateAlertSchema } from '../validators/resource.validators.js';
+import {
+  listAlertsQuery,
+  recalculateSchema,
+  updateAlertSchema,
+} from '../validators/resource.validators.js';
 
 const analyticsQuery = z.object({
   courseId: uuid.optional(),

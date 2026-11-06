@@ -78,7 +78,8 @@ const RULES: RuleDefinition[] = [
       m.attendanceRate === null || m.attendanceSessions < c.minAttendanceSessions
         ? { skip: `fewer than ${c.minAttendanceSessions} recorded class sessions` }
         : m.attendanceRate,
-    message: (v, t, m) => `Attendance is ${fmt(v)}% (${m.absences} absences), below the ${fmt(t)}% threshold`,
+    message: (v, t, m) =>
+      `Attendance is ${fmt(v)}% (${m.absences} absences), below the ${fmt(t)}% threshold`,
     suggestion: (s) =>
       s === 'CRITICAL'
         ? 'Contact the student and family about attendance and agree on a plan.'
@@ -91,7 +92,8 @@ const RULES: RuleDefinition[] = [
       m.completionRate === null || m.completionCount < c.minGradedAssessments
         ? { skip: `fewer than ${c.minGradedAssessments} assessments due` }
         : m.completionRate,
-    message: (v, t, m) => `Completed ${fmt(v)}% of assigned work (${m.missingCount} missing), below ${fmt(t)}%`,
+    message: (v, t, m) =>
+      `Completed ${fmt(v)}% of assigned work (${m.missingCount} missing), below ${fmt(t)}%`,
     suggestion: (s) =>
       s === 'CRITICAL'
         ? 'Set up a catch-up plan with deadlines for the missing work.'
@@ -121,7 +123,8 @@ export function evaluateRisk(metrics: RiskMetrics, config: RiskConfig): RiskEval
       continue;
     }
 
-    const worse = (threshold: number) => (rule.direction === 'below' ? value < threshold : value >= threshold);
+    const worse = (threshold: number) =>
+      rule.direction === 'below' ? value < threshold : value >= threshold;
     let severity: Severity | null = null;
     if (worse(cfg.critical)) severity = 'CRITICAL';
     else if (worse(cfg.warn)) severity = 'WARNING';
@@ -142,6 +145,9 @@ export function evaluateRisk(metrics: RiskMetrics, config: RiskConfig): RiskEval
   }
 
   factors.sort((a, b) => b.points - a.points);
-  const score = Math.min(100, factors.reduce((s, f) => s + f.points, 0));
+  const score = Math.min(
+    100,
+    factors.reduce((s, f) => s + f.points, 0),
+  );
   return { score, level: levelForScore(score, config.levels), factors, skipped };
 }

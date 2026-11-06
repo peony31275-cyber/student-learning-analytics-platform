@@ -42,8 +42,60 @@ const addDays = (d: Date, days: number) => new Date(d.getTime() + days * 86_400_
 /** Approximately normal noise (sum of uniforms). */
 const noise = (sd: number) => (rand() + rand() + rand() - 1.5) * sd * 1.4;
 
-const FIRST = ['Ava', 'Liam', 'Mia', 'Noah', 'Emma', 'Ethan', 'Sofia', 'Lucas', 'Chloe', 'Mason', 'Zoe', 'Logan', 'Lily', 'Aiden', 'Grace', 'Elijah', 'Nora', 'James', 'Ella', 'Benjamin', 'Aria', 'Henry', 'Layla', 'Daniel', 'Hannah', 'Jack', 'Maya', 'Wei', 'Priya', 'Diego'] as const;
-const LAST = ['Chen', 'Garcia', 'Smith', 'Patel', 'Johnson', 'Kim', 'Nguyen', 'Brown', 'Lopez', 'Wang', 'Davis', 'Martinez', 'Wilson', 'Anderson', 'Thomas', 'Taylor', 'Moore', 'Jackson', 'Lee', 'Harris'] as const;
+const FIRST = [
+  'Ava',
+  'Liam',
+  'Mia',
+  'Noah',
+  'Emma',
+  'Ethan',
+  'Sofia',
+  'Lucas',
+  'Chloe',
+  'Mason',
+  'Zoe',
+  'Logan',
+  'Lily',
+  'Aiden',
+  'Grace',
+  'Elijah',
+  'Nora',
+  'James',
+  'Ella',
+  'Benjamin',
+  'Aria',
+  'Henry',
+  'Layla',
+  'Daniel',
+  'Hannah',
+  'Jack',
+  'Maya',
+  'Wei',
+  'Priya',
+  'Diego',
+] as const;
+const LAST = [
+  'Chen',
+  'Garcia',
+  'Smith',
+  'Patel',
+  'Johnson',
+  'Kim',
+  'Nguyen',
+  'Brown',
+  'Lopez',
+  'Wang',
+  'Davis',
+  'Martinez',
+  'Wilson',
+  'Anderson',
+  'Thomas',
+  'Taylor',
+  'Moore',
+  'Jackson',
+  'Lee',
+  'Harris',
+] as const;
 
 /**
  * Student archetypes give the analytics and the risk engine realistic signal:
@@ -65,7 +117,10 @@ function pickArchetype(): Archetype {
   }
   return 'steady';
 }
-const PROFILE: Record<Archetype, { base: number; drift: number; present: number; missing: number }> = {
+const PROFILE: Record<
+  Archetype,
+  { base: number; drift: number; present: number; missing: number }
+> = {
   strong: { base: 91, drift: 0, present: 0.97, missing: 0.01 },
   steady: { base: 80, drift: 0, present: 0.93, missing: 0.04 },
   declining: { base: 82, drift: -3.2, present: 0.86, missing: 0.12 },
@@ -74,15 +129,51 @@ const PROFILE: Record<Archetype, { base: number; drift: number; present: number;
 };
 
 const COURSES = [
-  { code: 'MATH-201', name: 'Algebra II', teacher: 0, description: 'Functions, polynomials and systems of equations.' },
-  { code: 'MATH-310', name: 'AP Statistics', teacher: 0, description: 'Exploratory data analysis, probability and inference.' },
-  { code: 'SCI-220', name: 'Chemistry', teacher: 1, description: 'Atomic structure, bonding and reactions.' },
-  { code: 'SCI-305', name: 'AP Biology', teacher: 1, description: 'Cell biology, genetics and evolution.' },
-  { code: 'ENG-210', name: 'American Literature', teacher: 2, description: 'Major works and movements in American literature.' },
-  { code: 'CS-150', name: 'Intro to Programming', teacher: 2, description: 'Problem solving with Python.' },
+  {
+    code: 'MATH-201',
+    name: 'Algebra II',
+    teacher: 0,
+    description: 'Functions, polynomials and systems of equations.',
+  },
+  {
+    code: 'MATH-310',
+    name: 'AP Statistics',
+    teacher: 0,
+    description: 'Exploratory data analysis, probability and inference.',
+  },
+  {
+    code: 'SCI-220',
+    name: 'Chemistry',
+    teacher: 1,
+    description: 'Atomic structure, bonding and reactions.',
+  },
+  {
+    code: 'SCI-305',
+    name: 'AP Biology',
+    teacher: 1,
+    description: 'Cell biology, genetics and evolution.',
+  },
+  {
+    code: 'ENG-210',
+    name: 'American Literature',
+    teacher: 2,
+    description: 'Major works and movements in American literature.',
+  },
+  {
+    code: 'CS-150',
+    name: 'Intro to Programming',
+    teacher: 2,
+    description: 'Problem solving with Python.',
+  },
 ] as const;
 
-const ASSESSMENT_PLAN: { type: AssessmentType; title: string; week: number; max: number; weight: number }[] = [
+const ASSESSMENT_PLAN: {
+  type: AssessmentType;
+  title: string;
+  week: number;
+  max: number;
+  weight: number;
+}[] = [
   { type: 'ASSIGNMENT', title: 'Homework 1', week: 1, max: 20, weight: 1 },
   { type: 'QUIZ', title: 'Quiz 1', week: 2, max: 10, weight: 0.5 },
   { type: 'ASSIGNMENT', title: 'Homework 2', week: 3, max: 20, weight: 1 },
@@ -105,7 +196,14 @@ export async function seed(prisma: PrismaClient) {
   const school = await prisma.school.create({ data: { name: 'Riverside High School' } });
 
   await prisma.user.create({
-    data: { schoolId: school.id, email: 'admin@riverside.edu', passwordHash, role: 'ADMIN', firstName: 'Alex', lastName: 'Morgan' },
+    data: {
+      schoolId: school.id,
+      email: 'admin@riverside.edu',
+      passwordHash,
+      role: 'ADMIN',
+      firstName: 'Alex',
+      lastName: 'Morgan',
+    },
   });
 
   const teacherSeeds = [
@@ -131,7 +229,8 @@ export async function seed(prisma: PrismaClient) {
   }
 
   // ── Courses and assessments ────────────────────────────────────────────────
-  const courses: { id: string; assessments: { id: string; maxScore: unknown; dueDate: Date }[] }[] = [];
+  const courses: { id: string; assessments: { id: string; maxScore: unknown; dueDate: Date }[] }[] =
+    [];
   for (const c of COURSES) {
     const course = await prisma.course.create({
       data: {
@@ -171,7 +270,14 @@ export async function seed(prisma: PrismaClient) {
     const accountEmail = `student${i + 1}@riverside.edu`;
     const account = hasAccount
       ? await prisma.user.create({
-          data: { schoolId: school.id, email: accountEmail, passwordHash, role: 'STUDENT', firstName, lastName },
+          data: {
+            schoolId: school.id,
+            email: accountEmail,
+            passwordHash,
+            role: 'STUDENT',
+            firstName,
+            lastName,
+          },
           select: { id: true },
         })
       : null;
@@ -192,12 +298,24 @@ export async function seed(prisma: PrismaClient) {
 
   // ── Enrollments, grades and attendance (bulk inserts) ──────────────────────
   const enrollments: { studentId: string; courseId: string }[] = [];
-  const grades: { assessmentId: string; studentId: string; score: number | null; status: GradeStatus; gradedAt: Date }[] = [];
-  const attendance: { studentId: string; courseId: string; date: Date; status: AttendanceStatus }[] = [];
+  const grades: {
+    assessmentId: string;
+    studentId: string;
+    score: number | null;
+    status: GradeStatus;
+    gradedAt: Date;
+  }[] = [];
+  const attendance: {
+    studentId: string;
+    courseId: string;
+    date: Date;
+    status: AttendanceStatus;
+  }[] = [];
 
   // Two class meetings per week (Mon + Wed) for each course.
   const sessions: Date[] = [];
-  for (let w = 0; w < WEEKS; w++) sessions.push(addDays(TERM_START, w * 7), addDays(TERM_START, w * 7 + 2));
+  for (let w = 0; w < WEEKS; w++)
+    sessions.push(addDays(TERM_START, w * 7), addDays(TERM_START, w * 7 + 2));
 
   for (const [si, s] of students.entries()) {
     const p = PROFILE[s.archetype];
@@ -217,10 +335,23 @@ export async function seed(prisma: PrismaClient) {
         else if (r < p.missing + 0.06) status = 'LATE';
         else if (r > 0.99) status = 'EXCUSED';
 
-        const pct = clamp(p.base + courseOffset + p.drift * idx + noise(6) - (status === 'LATE' ? 5 : 0), 25, 100);
+        const pct = clamp(
+          p.base + courseOffset + p.drift * idx + noise(6) - (status === 'LATE' ? 5 : 0),
+          25,
+          100,
+        );
         const max = Number(a.maxScore);
-        const score = status === 'MISSING' || status === 'EXCUSED' ? null : Math.round((pct / 100) * max * 2) / 2;
-        grades.push({ assessmentId: a.id, studentId: s.id, score, status, gradedAt: addDays(a.dueDate, 3) });
+        const score =
+          status === 'MISSING' || status === 'EXCUSED'
+            ? null
+            : Math.round((pct / 100) * max * 2) / 2;
+        grades.push({
+          assessmentId: a.id,
+          studentId: s.id,
+          score,
+          status,
+          gradedAt: addDays(a.dueDate, 3),
+        });
       });
 
       sessions.forEach((date, idx) => {
@@ -256,7 +387,9 @@ export async function seed(prisma: PrismaClient) {
 const isMain = process.argv[1]?.replace(/\\/g, '/').endsWith('prisma/seed.ts');
 if (isMain) {
   if (process.env.NODE_ENV === 'production' && process.env.SEED_ALLOW_PRODUCTION !== 'true') {
-    console.error('Refusing to seed a production database. Set SEED_ALLOW_PRODUCTION=true to override.');
+    console.error(
+      'Refusing to seed a production database. Set SEED_ALLOW_PRODUCTION=true to override.',
+    );
     process.exit(1);
   }
   const url = process.env.DIRECT_URL ?? process.env.DATABASE_URL;

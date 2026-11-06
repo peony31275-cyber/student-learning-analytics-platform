@@ -9,7 +9,12 @@
  */
 import { type RiskConfig, resolveRiskConfig, riskConfigSchema } from '../domain/risk/config.js';
 import { type RiskEvaluation, evaluateRisk } from '../domain/risk/engine.js';
-import { type AttendanceStatusLike, type GradePoint, type RiskMetrics, computeMetrics } from '../domain/risk/metrics.js';
+import {
+  type AttendanceStatusLike,
+  type GradePoint,
+  type RiskMetrics,
+  computeMetrics,
+} from '../domain/risk/metrics.js';
 import type { AlertStatus, RiskLevel } from '../generated/prisma/enums.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { logger } from '../lib/logger.js';
@@ -23,7 +28,10 @@ import { RISK_ORDER, levelsAtLeast } from './risk-level.js';
 // ── Configuration ───────────────────────────────────────────────────────────
 
 export async function getRiskConfig(schoolId: string): Promise<RiskConfig> {
-  const school = await prisma.school.findUniqueOrThrow({ where: { id: schoolId }, select: { riskConfig: true } });
+  const school = await prisma.school.findUniqueOrThrow({
+    where: { id: schoolId },
+    select: { riskConfig: true },
+  });
   return resolveRiskConfig(school.riskConfig);
 }
 
@@ -47,7 +55,10 @@ export interface EnrollmentEvaluation extends RiskEvaluation {
 export async function evaluateCourse(courseId: string, config: RiskConfig, studentIds?: string[]) {
   const studentFilter = studentIds ? { studentId: { in: studentIds } } : {};
   const [enrollments, grades, attendance] = await Promise.all([
-    prisma.enrollment.findMany({ where: { courseId, status: 'ACTIVE', ...studentFilter }, select: { studentId: true } }),
+    prisma.enrollment.findMany({
+      where: { courseId, status: 'ACTIVE', ...studentFilter },
+      select: { studentId: true },
+    }),
     prisma.grade.findMany({
       where: { assessment: { courseId }, ...studentFilter },
       select: {
@@ -57,7 +68,10 @@ export async function evaluateCourse(courseId: string, config: RiskConfig, stude
         assessment: { select: { maxScore: true, weight: true, dueDate: true } },
       },
     }),
-    prisma.attendance.findMany({ where: { courseId, ...studentFilter }, select: { studentId: true, status: true } }),
+    prisma.attendance.findMany({
+      where: { courseId, ...studentFilter },
+      select: { studentId: true, status: true },
+    }),
   ]);
 
   const gradesByStudent = new Map<string, GradePoint[]>();
@@ -80,7 +94,11 @@ export async function evaluateCourse(courseId: string, config: RiskConfig, stude
   }
 
   return enrollments.map(({ studentId }): EnrollmentEvaluation => {
-    const metrics = computeMetrics(gradesByStudent.get(studentId) ?? [], attendanceByStudent.get(studentId) ?? [], config.recentWindow);
+    const metrics = computeMetrics(
+      gradesByStudent.get(studentId) ?? [],
+      attendanceByStudent.get(studentId) ?? [],
+      config.recentWindow,
+    );
     return { studentId, courseId, metrics, ...evaluateRisk(metrics, config) };
   });
 }
@@ -91,7 +109,10 @@ export async function evaluateCourse(courseId: string, config: RiskConfig, stude
  *  - a new alert, or an escalation (e.g. MEDIUM to HIGH), is (re)opened
  *  - otherwise the teacher's status (ACKNOWLEDGED/RESOLVED) is preserved
  */
-export function nextStatus(prev: { level: RiskLevel; status: AlertStatus } | undefined, level: RiskLevel): AlertStatus {
+export function nextStatus(
+  prev: { level: RiskLevel; status: AlertStatus } | undefined,
+  level: RiskLevel,
+): AlertStatus {
   if (level === 'LOW') return 'RESOLVED';
   if (!prev || RISK_ORDER[level] > RISK_ORDER[prev.level]) return 'OPEN';
   return prev.status === 'RESOLVED' ? 'OPEN' : prev.status;
@@ -140,7 +161,10 @@ export interface RecalculationSummary {
   durationMs: number;
 }
 
-async function recalculateCourses(courseIds: string[], config: RiskConfig): Promise<RecalculationSummary> {
+async function recalculateCourses(
+  courseIds: string[],
+  config: RiskConfig,
+): Promise<RecalculationSummary> {
   const started = Date.now();
   const byLevel: Record<RiskLevel, number> = { LOW: 0, MEDIUM: 0, HIGH: 0 };
   let evaluated = 0;
@@ -160,7 +184,10 @@ async function recalculateCourses(courseIds: string[], config: RiskConfig): Prom
 export async function recalculateForSchool(schoolId: string) {
   const config = await getRiskConfig(schoolId);
   const courses = await prisma.course.findMany({ where: { schoolId }, select: { id: true } });
-  return recalculateCourses(courses.map((c) => c.id), config);
+  return recalculateCourses(
+    courses.map((c) => c.id),
+    config,
+  );
 }
 
 /** Manual recalculation endpoint: teachers recalculate their courses, admins the whole school. */
@@ -170,7 +197,10 @@ export async function recalculate(user: AuthUser, courseId?: string) {
     where: { AND: [courseScope(user), courseId ? { id: courseId } : {}] },
     select: { id: true },
   });
-  return recalculateCourses(courses.map((c) => c.id), await getRiskConfig(user.schoolId));
+  return recalculateCourses(
+    courses.map((c) => c.id),
+    await getRiskConfig(user.schoolId),
+  );
 }
 
 /**
@@ -178,9 +208,15 @@ export async function recalculate(user: AuthUser, courseId?: string) {
  * affected students. Failures are logged, not thrown: the write that triggered
  * it has already been committed and must not be reported as failed.
  */
-export async function onPerformanceDataChanged(courseId: string, studentIds?: string[]): Promise<void> {
+export async function onPerformanceDataChanged(
+  courseId: string,
+  studentIds?: string[],
+): Promise<void> {
   try {
-    const course = await prisma.course.findUnique({ where: { id: courseId }, select: { schoolId: true } });
+    const course = await prisma.course.findUnique({
+      where: { id: courseId },
+      select: { schoolId: true },
+    });
     if (!course) return;
     const config = await getRiskConfig(course.schoolId);
     await persist(await evaluateCourse(courseId, config, studentIds));
@@ -202,13 +238,21 @@ const alertSelect = {
   computedAt: true,
   acknowledgedAt: true,
   note: true,
-  student: { select: { id: true, studentNumber: true, firstName: true, lastName: true, gradeLevel: true } },
+  student: {
+    select: { id: true, studentNumber: true, firstName: true, lastName: true, gradeLevel: true },
+  },
   course: { select: { id: true, code: true, name: true } },
 } satisfies Prisma.RiskAlertSelect;
 
 export async function listAlerts(
   user: AuthUser,
-  q: Pagination & { level?: RiskLevel; minLevel?: RiskLevel; status?: AlertStatus; courseId?: string; studentId?: string },
+  q: Pagination & {
+    level?: RiskLevel;
+    minLevel?: RiskLevel;
+    status?: AlertStatus;
+    courseId?: string;
+    studentId?: string;
+  },
 ) {
   const where: Prisma.RiskAlertWhereInput = {
     course: courseScope(user),
@@ -230,12 +274,19 @@ export async function listAlerts(
 }
 
 export async function getAlert(user: AuthUser, id: string) {
-  const alert = await prisma.riskAlert.findFirst({ where: { id, course: courseScope(user) }, select: alertSelect });
+  const alert = await prisma.riskAlert.findFirst({
+    where: { id, course: courseScope(user) },
+    select: alertSelect,
+  });
   if (!alert) throw notFound('Risk alert');
   return alert;
 }
 
-export async function updateAlert(user: AuthUser, id: string, input: { status: AlertStatus; note?: string | null }) {
+export async function updateAlert(
+  user: AuthUser,
+  id: string,
+  input: { status: AlertStatus; note?: string | null },
+) {
   const alert = await getAlert(user, id);
   await assertCourseAccess(prisma, user, alert.course.id, { manage: true });
   return prisma.riskAlert.update({

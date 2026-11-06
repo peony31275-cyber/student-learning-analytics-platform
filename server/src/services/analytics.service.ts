@@ -33,7 +33,13 @@ const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 
 async function scopedCourses(user: AuthUser, f: AnalyticsFilter) {
   return prisma.course.findMany({
-    where: { AND: [courseScope(user), f.courseId ? { id: f.courseId } : {}, f.term ? { term: f.term } : {}] },
+    where: {
+      AND: [
+        courseScope(user),
+        f.courseId ? { id: f.courseId } : {},
+        f.term ? { term: f.term } : {},
+      ],
+    },
     select: { id: true, code: true, name: true },
     orderBy: { code: 'asc' },
   });
@@ -64,12 +70,21 @@ export async function overview(user: AuthUser, f: AnalyticsFilter) {
   const ids = courses.map((c) => c.id);
   if (ids.length === 0) {
     return {
-      courses: 0, students: 0, assessments: 0, averageScore: null, attendanceRate: null,
-      completionRate: null, riskDistribution: emptyLevels(), atRiskStudents: 0, openAlerts: 0,
+      courses: 0,
+      students: 0,
+      assessments: 0,
+      averageScore: null,
+      attendanceRate: null,
+      completionRate: null,
+      riskDistribution: emptyLevels(),
+      atRiskStudents: 0,
+      openAlerts: 0,
     };
   }
 
-  const [gradeRow] = await prisma.$queryRaw<{ avg: unknown; completed: number; expected: number }[]>`
+  const [gradeRow] = await prisma.$queryRaw<
+    { avg: unknown; completed: number; expected: number }[]
+  >`
     SELECT ${weightedAvg} AS avg,
            COUNT(*) FILTER (WHERE g.status IN ('SUBMITTED', 'LATE'))::int AS completed,
            COUNT(*) FILTER (WHERE g.status <> 'EXCUSED')::int AS expected
@@ -80,15 +95,25 @@ export async function overview(user: AuthUser, f: AnalyticsFilter) {
     ${activeAttendanceFrom(ids)}`;
 
   const [students, assessments, levels, atRisk, openAlerts] = await Promise.all([
-    prisma.enrollment.findMany({ where: { courseId: { in: ids }, status: 'ACTIVE' }, distinct: ['studentId'], select: { studentId: true } }),
+    prisma.enrollment.findMany({
+      where: { courseId: { in: ids }, status: 'ACTIVE' },
+      distinct: ['studentId'],
+      select: { studentId: true },
+    }),
     prisma.assessment.count({ where: { courseId: { in: ids } } }),
-    prisma.riskAlert.groupBy({ by: ['level'], where: { courseId: { in: ids } }, _count: { _all: true } }),
+    prisma.riskAlert.groupBy({
+      by: ['level'],
+      where: { courseId: { in: ids } },
+      _count: { _all: true },
+    }),
     prisma.riskAlert.findMany({
       where: { courseId: { in: ids }, level: { in: ['MEDIUM', 'HIGH'] } },
       distinct: ['studentId'],
       select: { studentId: true },
     }),
-    prisma.riskAlert.count({ where: { courseId: { in: ids }, status: 'OPEN', level: { in: ['MEDIUM', 'HIGH'] } } }),
+    prisma.riskAlert.count({
+      where: { courseId: { in: ids }, status: 'OPEN', level: { in: ['MEDIUM', 'HIGH'] } },
+    }),
   ]);
 
   const riskDistribution = emptyLevels();
@@ -114,7 +139,9 @@ export async function scoreTrends(user: AuthUser, f: AnalyticsFilter) {
   const ids = courses.map((c) => c.id);
   if (ids.length === 0) return { overall: [], byCourse: [] };
 
-  const rows = await prisma.$queryRaw<{ period: Date; courseId: string; avg: unknown; graded: number }[]>`
+  const rows = await prisma.$queryRaw<
+    { period: Date; courseId: string; avg: unknown; graded: number }[]
+  >`
     SELECT date_trunc('week', a."dueDate") AS period, a."courseId" AS "courseId",
            ${weightedAvg} AS avg,
            COUNT(g.id) FILTER (WHERE g.score IS NOT NULL)::int AS graded
@@ -129,12 +156,18 @@ export async function scoreTrends(user: AuthUser, f: AnalyticsFilter) {
     ORDER BY 1`;
 
   return {
-    overall: overallRows.map((r) => ({ period: isoDay(r.period), averagePercent: pct(r.avg), gradedCount: r.graded })),
+    overall: overallRows.map((r) => ({
+      period: isoDay(r.period),
+      averagePercent: pct(r.avg),
+      gradedCount: r.graded,
+    })),
     byCourse: courses.map((c) => ({
       courseId: c.id,
       code: c.code,
       name: c.name,
-      points: rows.filter((r) => r.courseId === c.id).map((r) => ({ period: isoDay(r.period), averagePercent: pct(r.avg) })),
+      points: rows
+        .filter((r) => r.courseId === c.id)
+        .map((r) => ({ period: isoDay(r.period), averagePercent: pct(r.avg) })),
     })),
   };
 }
@@ -159,8 +192,16 @@ export async function courseComparison(user: AuthUser, f: AnalyticsFilter) {
              COUNT(*) FILTER (WHERE t.status <> 'EXCUSED')::int AS counted
       ${activeAttendanceFrom(ids)}
       GROUP BY 1`,
-    prisma.enrollment.groupBy({ by: ['courseId'], where: { courseId: { in: ids }, status: 'ACTIVE' }, _count: { _all: true } }),
-    prisma.riskAlert.groupBy({ by: ['courseId', 'level'], where: { courseId: { in: ids } }, _count: { _all: true } }),
+    prisma.enrollment.groupBy({
+      by: ['courseId'],
+      where: { courseId: { in: ids }, status: 'ACTIVE' },
+      _count: { _all: true },
+    }),
+    prisma.riskAlert.groupBy({
+      by: ['courseId', 'level'],
+      where: { courseId: { in: ids } },
+      _count: { _all: true },
+    }),
   ]);
 
   return courses.map((c) => {
@@ -227,7 +268,10 @@ export async function attendanceAnalytics(user: AuthUser, f: AnalyticsFilter) {
       excused: w.excused,
       attendanceRate: rate(w.present + w.late, w.present + w.late + w.absent),
     })),
-    distribution: order.map((band) => ({ band, count: buckets.find((b) => b.band === band)?.count ?? 0 })),
+    distribution: order.map((band) => ({
+      band,
+      count: buckets.find((b) => b.band === band)?.count ?? 0,
+    })),
   };
 }
 
@@ -239,8 +283,15 @@ export async function riskDistribution(user: AuthUser, f: AnalyticsFilter) {
   if (ids.length === 0) return { totals: emptyLevels(), byCourse: [], topFactors: [] };
 
   const [grouped, flagged] = await Promise.all([
-    prisma.riskAlert.groupBy({ by: ['courseId', 'level'], where: { courseId: { in: ids } }, _count: { _all: true } }),
-    prisma.riskAlert.findMany({ where: { courseId: { in: ids }, level: { in: ['MEDIUM', 'HIGH'] } }, select: { factors: true } }),
+    prisma.riskAlert.groupBy({
+      by: ['courseId', 'level'],
+      where: { courseId: { in: ids } },
+      _count: { _all: true },
+    }),
+    prisma.riskAlert.findMany({
+      where: { courseId: { in: ids }, level: { in: ['MEDIUM', 'HIGH'] } },
+      select: { factors: true },
+    }),
   ]);
 
   const totals = emptyLevels();
@@ -261,7 +312,9 @@ export async function riskDistribution(user: AuthUser, f: AnalyticsFilter) {
       for (const g of grouped.filter((x) => x.courseId === c.id)) levels[g.level] = g._count._all;
       return { courseId: c.id, code: c.code, ...levels };
     }),
-    topFactors: [...factorCounts.entries()].map(([rule, count]) => ({ rule, count })).sort((a, b) => b.count - a.count),
+    topFactors: [...factorCounts.entries()]
+      .map(([rule, count]) => ({ rule, count }))
+      .sort((a, b) => b.count - a.count),
   };
 }
 
@@ -280,10 +333,22 @@ export async function studentProgress(user: AuthUser, studentId: string) {
 
   const [evaluations, alerts, timeline, attendanceWeekly] = await Promise.all([
     Promise.all(courseIds.map((id) => evaluateCourse(id, config, [studentId]))),
-    prisma.riskAlert.findMany({ where: { studentId, courseId: { in: courseIds } }, select: { courseId: true, level: true, score: true } }),
+    prisma.riskAlert.findMany({
+      where: { studentId, courseId: { in: courseIds } },
+      select: { courseId: true, level: true, score: true },
+    }),
     // Student's score on each assessment next to the class average for the same assessment.
     prisma.$queryRaw<
-      { assessmentId: string; title: string; type: string; dueDate: Date; courseId: string; percent: unknown; status: string; classAvg: unknown }[]
+      {
+        assessmentId: string;
+        title: string;
+        type: string;
+        dueDate: Date;
+        courseId: string;
+        percent: unknown;
+        status: string;
+        classAvg: unknown;
+      }[]
     >`
       SELECT a.id AS "assessmentId", a.title, a.type::text AS type, a."dueDate" AS "dueDate", a."courseId" AS "courseId",
              mine.score / a."maxScore" * 100 AS percent, mine.status::text AS status,
@@ -332,6 +397,9 @@ export async function studentProgress(user: AuthUser, studentId: string) {
       classAverage: pct(t.classAvg),
       status: t.status,
     })),
-    attendanceWeekly: attendanceWeekly.map((w) => ({ period: isoDay(w.period), attendanceRate: rate(w.attended, w.counted) })),
+    attendanceWeekly: attendanceWeekly.map((w) => ({
+      period: isoDay(w.period),
+      attendanceRate: rate(w.attended, w.counted),
+    })),
   };
 }

@@ -9,20 +9,23 @@ import type {
   UpdateStudentInput,
 } from '../validators/resource.validators.js';
 import { assertStudentAccess, courseScope, studentScope } from './access.service.js';
-import { highestRisk } from './risk-level.js';
+import { highestRisk, levelsAtLeast } from './risk-level.js';
 
-const listSelect = {
-  id: true,
-  studentNumber: true,
-  firstName: true,
-  lastName: true,
-  email: true,
-  gradeLevel: true,
-  status: true,
-  userId: true,
-  _count: { select: { enrollments: { where: { status: 'ACTIVE' } } } },
-  riskAlerts: { select: { level: true, courseId: true } },
-} satisfies Prisma.StudentProfileSelect;
+/** Selection depends on the caller: counts and risk are limited to courses they can see. */
+const listSelect = (user: AuthUser) =>
+  ({
+    id: true,
+    studentNumber: true,
+    firstName: true,
+    lastName: true,
+    email: true,
+    gradeLevel: true,
+    status: true,
+    userId: true,
+    _count: { select: { enrollments: { where: { status: 'ACTIVE', course: courseScope(user) } } } },
+    // Risk shown to a teacher only reflects the courses they can see.
+    riskAlerts: { where: { course: courseScope(user) }, select: { level: true, courseId: true } },
+  }) satisfies Prisma.StudentProfileSelect;
 
 export async function listStudents(user: AuthUser, q: ListStudentsQuery) {
   const filters: Prisma.StudentProfileWhereInput[] = [studentScope(user)];
@@ -39,16 +42,24 @@ export async function listStudents(user: AuthUser, q: ListStudentsQuery) {
   if (q.courseId) filters.push({ enrollments: { some: { courseId: q.courseId } } });
   if (q.gradeLevel) filters.push({ gradeLevel: q.gradeLevel });
   if (q.status) filters.push({ status: q.status });
-  if (q.riskLevel) filters.push({ riskAlerts: { some: { level: q.riskLevel } } });
+  if (q.riskLevel) {
+    // Match the student's *highest* visible level, consistent with the riskLevel shown in each row.
+    const scoped = { course: courseScope(user) };
+    const higher = levelsAtLeast(q.riskLevel).filter((l) => l !== q.riskLevel);
+    filters.push({ riskAlerts: { some: { ...scoped, level: q.riskLevel } } });
+    if (higher.length) filters.push({ riskAlerts: { none: { ...scoped, level: { in: higher } } } });
+  }
   const where: Prisma.StudentProfileWhereInput = { AND: filters };
 
   const orderBy: Prisma.StudentProfileOrderByWithRelationInput[] =
-    q.sort === 'lastName' ? [{ lastName: q.order }, { firstName: q.order }] : [{ [q.sort]: q.order }];
+    q.sort === 'lastName'
+      ? [{ lastName: q.order }, { firstName: q.order }]
+      : [{ [q.sort]: q.order }];
 
   // Prisma resolves the nested riskAlerts/_count selections with batched
   // queries (WHERE studentId IN (...)), not one query per row, so there is no N+1.
   const [rows, total] = await prisma.$transaction([
-    prisma.studentProfile.findMany({ where, select: listSelect, orderBy, ...toSkipTake(q) }),
+    prisma.studentProfile.findMany({ where, select: listSelect(user), orderBy, ...toSkipTake(q) }),
     prisma.studentProfile.count({ where }),
   ]);
 
@@ -119,7 +130,14 @@ export async function getStudent(user: AuthUser, id: string) {
       },
       riskAlerts: {
         where: { course: courseScope(user) },
-        select: { id: true, courseId: true, level: true, score: true, status: true, computedAt: true },
+        select: {
+          id: true,
+          courseId: true,
+          level: true,
+          score: true,
+          status: true,
+          computedAt: true,
+        },
       },
     },
   });
@@ -137,12 +155,17 @@ export async function createStudent(user: AuthUser, input: CreateStudentInput) {
     throw badRequest('Teachers must enroll a new student in at least one of their courses');
   }
   if (courseIds.length) {
-    const allowed = await prisma.course.count({ where: { AND: [{ id: { in: courseIds } }, courseScope(user)] } });
-    if (allowed !== courseIds.length) throw forbidden('You can only enroll students in courses you manage');
+    const allowed = await prisma.course.count({
+      where: { AND: [{ id: { in: courseIds } }, courseScope(user)] },
+    });
+    if (allowed !== courseIds.length)
+      throw forbidden('You can only enroll students in courses you manage');
   }
 
   const duplicate = await prisma.studentProfile.findUnique({
-    where: { schoolId_studentNumber: { schoolId: user.schoolId, studentNumber: input.studentNumber } },
+    where: {
+      schoolId_studentNumber: { schoolId: user.schoolId, studentNumber: input.studentNumber },
+    },
     select: { id: true },
   });
   if (duplicate) throw conflict(`Student number ${input.studentNumber} is already in use`);
@@ -160,7 +183,9 @@ export async function createStudent(user: AuthUser, input: CreateStudentInput) {
       },
     });
     if (courseIds.length) {
-      await tx.enrollment.createMany({ data: courseIds.map((courseId) => ({ studentId: student.id, courseId })) });
+      await tx.enrollment.createMany({
+        data: courseIds.map((courseId) => ({ studentId: student.id, courseId })),
+      });
     }
     return student;
   });

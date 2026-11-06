@@ -31,7 +31,11 @@ async function passwordHash() {
   return cachedHash;
 }
 
-export async function createUser(schoolId: string, role: Role, overrides: { email?: string; isActive?: boolean } = {}) {
+export async function createUser(
+  schoolId: string,
+  role: Role,
+  overrides: { email?: string; isActive?: boolean } = {},
+) {
   const email = overrides.email ?? `${role.toLowerCase()}-${uniq()}@test.edu`;
   return prisma.user.create({
     data: {
@@ -48,7 +52,10 @@ export async function createUser(schoolId: string, role: Role, overrides: { emai
   });
 }
 
-export async function createStudent(schoolId: string, opts: { userId?: string; email?: string; lastName?: string } = {}) {
+export async function createStudent(
+  schoolId: string,
+  opts: { userId?: string; email?: string; lastName?: string } = {},
+) {
   return prisma.studentProfile.create({
     data: {
       schoolId,
@@ -76,7 +83,8 @@ export async function enroll(studentId: string, courseId: string) {
 export async function loginAs(email: string, password = PASSWORD) {
   const agent = request.agent(app);
   const res = await agent.post('/api/v1/auth/login').send({ email, password });
-  if (res.status !== 200) throw new Error(`login failed for ${email}: ${res.status} ${JSON.stringify(res.body)}`);
+  if (res.status !== 200)
+    throw new Error(`login failed for ${email}: ${res.status} ${JSON.stringify(res.body)}`);
   return agent;
 }
 
@@ -103,6 +111,18 @@ export async function buildWorld() {
   await enroll(studentA.id, courseA.id);
   await enroll(studentB.id, courseB.id);
 
-  return { school, otherSchool, admin, teacherA, teacherB, studentUser, otherAdmin, courseA, courseB, studentA, studentB };
+  return {
+    school,
+    otherSchool,
+    admin,
+    teacherA,
+    teacherB,
+    studentUser,
+    otherAdmin,
+    courseA,
+    courseB,
+    studentA,
+    studentB,
+  };
 }
 export type World = Awaited<ReturnType<typeof buildWorld>>;

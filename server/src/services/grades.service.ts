@@ -4,10 +4,16 @@ import type { AuthUser } from '../types/auth.js';
 import { badRequest, conflict, notFound } from '../utils/errors.js';
 import { round, toNumber } from '../utils/number.js';
 import type { BulkGradesInput } from '../validators/resource.validators.js';
-import { assertAssessmentAccess, assertCourseAccess, assertStudentAccess, courseScope } from './access.service.js';
+import {
+  assertAssessmentAccess,
+  assertCourseAccess,
+  assertStudentAccess,
+  courseScope,
+} from './access.service.js';
 import { onPerformanceDataChanged } from './risk.service.js';
 
-const pct = (score: number | null, max: number) => (score === null ? null : round((score / max) * 100));
+const pct = (score: number | null, max: number) =>
+  score === null ? null : round((score / max) * 100);
 
 // ── Assessments ─────────────────────────────────────────────────────────────
 
@@ -42,7 +48,13 @@ export async function listAssessments(user: AuthUser, courseId: string) {
   });
 }
 
-type AssessmentInput = { title: string; type: 'ASSIGNMENT' | 'QUIZ' | 'EXAM' | 'PROJECT'; maxScore: number; weight: number; dueDate: Date };
+type AssessmentInput = {
+  title: string;
+  type: 'ASSIGNMENT' | 'QUIZ' | 'EXAM' | 'PROJECT';
+  maxScore: number;
+  weight: number;
+  dueDate: Date;
+};
 
 export async function createAssessment(user: AuthUser, courseId: string, input: AssessmentInput) {
   await assertCourseAccess(prisma, user, courseId, { manage: true });
@@ -50,10 +62,16 @@ export async function createAssessment(user: AuthUser, courseId: string, input: 
   return { ...a, maxScore: Number(a.maxScore), weight: Number(a.weight) };
 }
 
-export async function updateAssessment(user: AuthUser, id: string, input: Partial<AssessmentInput>) {
+export async function updateAssessment(
+  user: AuthUser,
+  id: string,
+  input: Partial<AssessmentInput>,
+) {
   const assessment = await assertAssessmentAccess(prisma, user, id, { manage: true });
   if (input.maxScore !== undefined) {
-    const above = await prisma.grade.count({ where: { assessmentId: id, score: { gt: input.maxScore } } });
+    const above = await prisma.grade.count({
+      where: { assessmentId: id, score: { gt: input.maxScore } },
+    });
     if (above > 0) throw conflict(`${above} existing grade(s) exceed the new maximum score`);
   }
   const a = await prisma.assessment.update({ where: { id }, data: input });
@@ -78,7 +96,9 @@ export async function getGradebook(user: AuthUser, assessmentId: string) {
   const [enrollments, grades] = await Promise.all([
     prisma.enrollment.findMany({
       where: { courseId: assessment.courseId, status: 'ACTIVE' },
-      select: { student: { select: { id: true, studentNumber: true, firstName: true, lastName: true } } },
+      select: {
+        student: { select: { id: true, studentNumber: true, firstName: true, lastName: true } },
+      },
       orderBy: [{ student: { lastName: 'asc' } }, { student: { firstName: 'asc' } }],
     }),
     prisma.grade.findMany({ where: { assessmentId } }),
@@ -113,7 +133,10 @@ export async function upsertGrades(user: AuthUser, assessmentId: string, input: 
   const studentIds = input.grades.map((g) => g.studentId);
 
   const over = input.grades.find((g) => g.score != null && g.score > max);
-  if (over) throw badRequest(`Score ${over.score} exceeds the maximum of ${max}`, { studentId: over.studentId });
+  if (over)
+    throw badRequest(`Score ${over.score} exceeds the maximum of ${max}`, {
+      studentId: over.studentId,
+    });
 
   const enrolled = await prisma.enrollment.findMany({
     where: { courseId: assessment.courseId, studentId: { in: studentIds }, status: 'ACTIVE' },
@@ -121,10 +144,15 @@ export async function upsertGrades(user: AuthUser, assessmentId: string, input: 
   });
   const enrolledIds = new Set(enrolled.map((e) => e.studentId));
   const notEnrolled = studentIds.filter((id) => !enrolledIds.has(id));
-  if (notEnrolled.length) throw badRequest('Some students are not actively enrolled in this course', { studentIds: notEnrolled });
+  if (notEnrolled.length)
+    throw badRequest('Some students are not actively enrolled in this course', {
+      studentIds: notEnrolled,
+    });
 
   const result = await prisma.$transaction(async (tx) => {
-    const existing = await tx.grade.findMany({ where: { assessmentId, studentId: { in: studentIds } } });
+    const existing = await tx.grade.findMany({
+      where: { assessmentId, studentId: { in: studentIds } },
+    });
     const byStudent = new Map(existing.map((g) => [g.studentId, g]));
     let createdCount = 0;
     let updatedCount = 0;
@@ -140,30 +168,67 @@ export async function upsertGrades(user: AuthUser, assessmentId: string, input: 
 
     for (const entry of input.grades) {
       // MISSING / EXCUSED work has no score.
-      const score = entry.status === 'MISSING' || entry.status === 'EXCUSED' ? null : (entry.score ?? null);
+      const score =
+        entry.status === 'MISSING' || entry.status === 'EXCUSED' ? null : (entry.score ?? null);
       const prev = byStudent.get(entry.studentId);
       if (!prev) {
         const g = await tx.grade.create({
-          data: { assessmentId, studentId: entry.studentId, score, status: entry.status, feedback: entry.feedback ?? null, gradedById: user.id },
+          data: {
+            assessmentId,
+            studentId: entry.studentId,
+            score,
+            status: entry.status,
+            feedback: entry.feedback ?? null,
+            gradedById: user.id,
+          },
         });
-        history.push({ gradeId: g.id, oldScore: null, newScore: score, oldStatus: null, newStatus: entry.status, changedById: user.id, reason: input.reason ?? null });
+        history.push({
+          gradeId: g.id,
+          oldScore: null,
+          newScore: score,
+          oldStatus: null,
+          newStatus: entry.status,
+          changedById: user.id,
+          reason: input.reason ?? null,
+        });
         createdCount++;
         continue;
       }
       const prevScore = toNumber(prev.score);
-      const changed = prevScore !== score || prev.status !== entry.status || (entry.feedback !== undefined && entry.feedback !== prev.feedback);
+      const changed =
+        prevScore !== score ||
+        prev.status !== entry.status ||
+        (entry.feedback !== undefined && entry.feedback !== prev.feedback);
       if (!changed) continue;
       await tx.grade.update({
         where: { id: prev.id },
-        data: { score, status: entry.status, feedback: entry.feedback ?? prev.feedback, gradedById: user.id, gradedAt: new Date() },
+        data: {
+          score,
+          status: entry.status,
+          feedback: entry.feedback ?? prev.feedback,
+          gradedById: user.id,
+          gradedAt: new Date(),
+        },
       });
       if (prevScore !== score || prev.status !== entry.status) {
-        history.push({ gradeId: prev.id, oldScore: prevScore, newScore: score, oldStatus: prev.status, newStatus: entry.status, changedById: user.id, reason: input.reason ?? null });
+        history.push({
+          gradeId: prev.id,
+          oldScore: prevScore,
+          newScore: score,
+          oldStatus: prev.status,
+          newStatus: entry.status,
+          changedById: user.id,
+          reason: input.reason ?? null,
+        });
       }
       updatedCount++;
     }
     if (history.length) await tx.gradeHistory.createMany({ data: history });
-    return { created: createdCount, updated: updatedCount, unchanged: input.grades.length - createdCount - updatedCount };
+    return {
+      created: createdCount,
+      updated: updatedCount,
+      unchanged: input.grades.length - createdCount - updatedCount,
+    };
   });
 
   await onPerformanceDataChanged(assessment.courseId, studentIds);
@@ -216,6 +281,13 @@ export async function getGradeHistory(user: AuthUser, gradeId: string) {
   });
   if (!grade) throw notFound('Grade');
   await assertAssessmentAccess(prisma, user, grade.assessmentId, { manage: true });
-  const rows = await prisma.gradeHistory.findMany({ where: { gradeId }, orderBy: { changedAt: 'desc' } });
-  return rows.map((h) => ({ ...h, oldScore: toNumber(h.oldScore), newScore: toNumber(h.newScore) }));
+  const rows = await prisma.gradeHistory.findMany({
+    where: { gradeId },
+    orderBy: { changedAt: 'desc' },
+  });
+  return rows.map((h) => ({
+    ...h,
+    oldScore: toNumber(h.oldScore),
+    newScore: toNumber(h.newScore),
+  }));
 }

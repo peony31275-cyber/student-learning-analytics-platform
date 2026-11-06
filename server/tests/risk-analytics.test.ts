@@ -1,7 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { prisma } from '../src/lib/prisma.js';
 import { nextStatus } from '../src/services/risk.service.js';
-import { type World, buildWorld, createStudent, enroll, loginAs, resetDb } from './helpers/factories.js';
+import {
+  type World,
+  buildWorld,
+  createStudent,
+  enroll,
+  loginAs,
+  resetDb,
+} from './helpers/factories.js';
 
 /**
  * Builds course A with 4 assessments (max 100, weight 1) and 6 class sessions:
@@ -15,7 +22,14 @@ async function seedCourseA(w: World) {
   const scores = { [w.studentA.id]: [85, 80, 50, 45], [good.id]: [90, 92, 94, 96] };
   for (let i = 0; i < 4; i++) {
     const a = await prisma.assessment.create({
-      data: { courseId: w.courseA.id, title: `A${i}`, type: 'QUIZ', maxScore: 100, weight: 1, dueDate: new Date(Date.UTC(2026, 8, 7 + i * 7)) },
+      data: {
+        courseId: w.courseA.id,
+        title: `A${i}`,
+        type: 'QUIZ',
+        maxScore: 100,
+        weight: 1,
+        dueDate: new Date(Date.UTC(2026, 8, 7 + i * 7)),
+      },
     });
     for (const [studentId, s] of Object.entries(scores)) {
       await prisma.grade.create({ data: { assessmentId: a.id, studentId, score: s[i]! } });
@@ -23,8 +37,17 @@ async function seedCourseA(w: World) {
   }
   for (let d = 0; d < 6; d++) {
     const date = new Date(Date.UTC(2026, 8, 7 + d * 2));
-    await prisma.attendance.create({ data: { courseId: w.courseA.id, studentId: good.id, date, status: 'PRESENT' } });
-    await prisma.attendance.create({ data: { courseId: w.courseA.id, studentId: w.studentA.id, date, status: d < 2 ? 'ABSENT' : 'PRESENT' } });
+    await prisma.attendance.create({
+      data: { courseId: w.courseA.id, studentId: good.id, date, status: 'PRESENT' },
+    });
+    await prisma.attendance.create({
+      data: {
+        courseId: w.courseA.id,
+        studentId: w.studentA.id,
+        date,
+        status: d < 2 ? 'ABSENT' : 'PRESENT',
+      },
+    });
   }
   return { good };
 }
@@ -42,7 +65,11 @@ describe('Early warning engine (persisted)', () => {
 
     const res = await teacher.post('/api/v1/risk-alerts/recalculate').send({});
     expect(res.status).toBe(200);
-    expect(res.body.data).toMatchObject({ courses: 1, evaluated: 2, byLevel: { LOW: 1, HIGH: 1, MEDIUM: 0 } });
+    expect(res.body.data).toMatchObject({
+      courses: 1,
+      evaluated: 2,
+      byLevel: { LOW: 1, HIGH: 1, MEDIUM: 0 },
+    });
 
     const alerts = await prisma.riskAlert.findMany();
     expect(alerts).toHaveLength(2);
@@ -50,7 +77,9 @@ describe('Early warning engine (persisted)', () => {
     expect(risky.level).toBe('HIGH');
     expect(risky.status).toBe('OPEN');
     const rules = (risky.factors as { rule: string }[]).map((f) => f.rule);
-    expect(rules).toEqual(expect.arrayContaining(['recentPerformance', 'decliningTrend', 'attendance']));
+    expect(rules).toEqual(
+      expect.arrayContaining(['recentPerformance', 'decliningTrend', 'attendance']),
+    );
     expect(risky.metrics).toMatchObject({ recentAverage: 58.3, attendanceRate: 66.7 });
 
     const fine = alerts.find((a) => a.studentId === good.id)!;
@@ -68,11 +97,17 @@ describe('Early warning engine (persisted)', () => {
     const teacherA = await loginAs(w.teacherA.email);
     const high = await teacherA.get('/api/v1/risk-alerts?minLevel=MEDIUM');
     expect(high.body.data).toHaveLength(1);
-    expect(high.body.data[0]).toMatchObject({ level: 'HIGH', student: { id: w.studentA.id }, course: { id: w.courseA.id } });
+    expect(high.body.data[0]).toMatchObject({
+      level: 'HIGH',
+      student: { id: w.studentA.id },
+      course: { id: w.courseA.id },
+    });
 
     const teacherB = await loginAs(w.teacherB.email);
     const none = await teacherB.get('/api/v1/risk-alerts');
-    expect(none.body.data.every((a: { course: { id: string } }) => a.course.id === w.courseB.id)).toBe(true);
+    expect(
+      none.body.data.every((a: { course: { id: string } }) => a.course.id === w.courseB.id),
+    ).toBe(true);
     expect((await teacherB.get(`/api/v1/risk-alerts/${high.body.data[0].id}`)).status).toBe(404);
   });
 
@@ -82,11 +117,15 @@ describe('Early warning engine (persisted)', () => {
     await teacher.post('/api/v1/risk-alerts/recalculate').send({});
     const alert = (await teacher.get('/api/v1/risk-alerts?level=HIGH')).body.data[0];
 
-    const ack = await teacher.patch(`/api/v1/risk-alerts/${alert.id}`).send({ status: 'ACKNOWLEDGED', note: 'Met with student' });
+    const ack = await teacher
+      .patch(`/api/v1/risk-alerts/${alert.id}`)
+      .send({ status: 'ACKNOWLEDGED', note: 'Met with student' });
     expect(ack.body.data).toMatchObject({ status: 'ACKNOWLEDGED', note: 'Met with student' });
 
     await teacher.post('/api/v1/risk-alerts/recalculate').send({});
-    expect((await prisma.riskAlert.findUniqueOrThrow({ where: { id: alert.id } })).status).toBe('ACKNOWLEDGED');
+    expect((await prisma.riskAlert.findUniqueOrThrow({ where: { id: alert.id } })).status).toBe(
+      'ACKNOWLEDGED',
+    );
   });
 
   it('nextStatus implements the alert lifecycle', () => {
@@ -102,12 +141,17 @@ describe('Early warning engine (persisted)', () => {
     const ids: string[] = [];
     for (let i = 0; i < 3; i++) {
       const res = await teacher.post(`/api/v1/courses/${w.courseA.id}/assessments`).send({
-        title: `Q${i}`, type: 'QUIZ', maxScore: 10, dueDate: `2026-09-1${i}`,
+        title: `Q${i}`,
+        type: 'QUIZ',
+        maxScore: 10,
+        dueDate: `2026-09-1${i}`,
       });
       ids.push(res.body.data.id);
     }
     for (const id of ids) {
-      await teacher.put(`/api/v1/assessments/${id}/grades`).send({ grades: [{ studentId: w.studentA.id, score: 4 }] });
+      await teacher
+        .put(`/api/v1/assessments/${id}/grades`)
+        .send({ grades: [{ studentId: w.studentA.id, score: 4 }] });
     }
     const alert = await prisma.riskAlert.findUniqueOrThrow({
       where: { studentId_courseId: { studentId: w.studentA.id, courseId: w.courseA.id } },
@@ -120,14 +164,19 @@ describe('Early warning engine (persisted)', () => {
     await seedCourseA(w);
     const teacher = await loginAs(w.teacherA.email);
     expect((await teacher.put('/api/v1/settings/risk').send({})).status).toBe(403);
-    expect((await teacher.get('/api/v1/settings/risk')).body.data.levels).toEqual({ medium: 25, high: 50 });
+    expect((await teacher.get('/api/v1/settings/risk')).body.data.levels).toEqual({
+      medium: 25,
+      high: 50,
+    });
 
     const admin = await loginAs(w.admin.email);
     const bad = await admin.put('/api/v1/settings/risk').send({ levels: { medium: 80, high: 20 } });
     expect(bad.status).toBe(400);
 
     // Raising the HIGH threshold to 100 makes the struggling student MEDIUM instead of HIGH.
-    const res = await admin.put('/api/v1/settings/risk').send({ levels: { medium: 25, high: 100 } });
+    const res = await admin
+      .put('/api/v1/settings/risk')
+      .send({ levels: { medium: 25, high: 100 } });
     expect(res.status).toBe(200);
     expect(res.body.data.recalculation.byLevel.HIGH).toBe(0);
     const alert = await prisma.riskAlert.findFirstOrThrow({ where: { studentId: w.studentA.id } });
@@ -139,7 +188,9 @@ describe('Early warning engine (persisted)', () => {
     await seedCourseA(w);
     const teacher = await loginAs(w.teacherA.email);
     await teacher.post('/api/v1/risk-alerts/recalculate').send({});
-    const enrollment = await prisma.enrollment.findFirstOrThrow({ where: { studentId: w.studentA.id, courseId: w.courseA.id } });
+    const enrollment = await prisma.enrollment.findFirstOrThrow({
+      where: { studentId: w.studentA.id, courseId: w.courseA.id },
+    });
     await teacher.patch(`/api/v1/enrollments/${enrollment.id}`).send({ status: 'DROPPED' });
     await teacher.post('/api/v1/risk-alerts/recalculate').send({});
     expect(await prisma.riskAlert.count({ where: { studentId: w.studentA.id } })).toBe(0);
@@ -189,7 +240,9 @@ describe('Analytics API', () => {
   });
 
   it('excludes dropped students from statistics', async () => {
-    const e = await prisma.enrollment.findFirstOrThrow({ where: { studentId: w.studentA.id, courseId: w.courseA.id } });
+    const e = await prisma.enrollment.findFirstOrThrow({
+      where: { studentId: w.studentA.id, courseId: w.courseA.id },
+    });
     await prisma.enrollment.update({ where: { id: e.id }, data: { status: 'DROPPED' } });
     const res = await (await loginAs(w.teacherA.email)).get('/api/v1/analytics/overview');
     expect(res.body.data.averageScore).toBe(93); // only the good student
@@ -211,15 +264,27 @@ describe('Analytics API', () => {
     const admin = await loginAs(w.admin.email);
     const cmp = await admin.get('/api/v1/analytics/course-comparison');
     expect(cmp.body.data).toHaveLength(2);
-    expect(cmp.body.data.find((c: { courseId: string }) => c.courseId === w.courseA.id)).toMatchObject({
-      students: 2, averageScore: 79, attendanceRate: 83.3, risk: { HIGH: 1, LOW: 1 },
+    expect(
+      cmp.body.data.find((c: { courseId: string }) => c.courseId === w.courseA.id),
+    ).toMatchObject({
+      students: 2,
+      averageScore: 79,
+      attendanceRate: 83.3,
+      risk: { HIGH: 1, LOW: 1 },
     });
 
     const att = await admin.get(`/api/v1/analytics/attendance?courseId=${w.courseA.id}`);
-    const totals = att.body.data.weekly.reduce((s: number, x: { present: number; absent: number }) => s + x.present + x.absent, 0);
+    const totals = att.body.data.weekly.reduce(
+      (s: number, x: { present: number; absent: number }) => s + x.present + x.absent,
+      0,
+    );
     expect(totals).toBe(12);
     expect(att.body.data.distribution).toEqual([
-      { band: '<70', count: 1 }, { band: '70-80', count: 0 }, { band: '80-90', count: 0 }, { band: '90-95', count: 0 }, { band: '95-100', count: 1 },
+      { band: '<70', count: 1 },
+      { band: '70-80', count: 0 },
+      { band: '80-90', count: 0 },
+      { band: '90-95', count: 0 },
+      { band: '95-100', count: 1 },
     ]);
 
     const risk = await admin.get('/api/v1/analytics/risk-distribution');
@@ -231,9 +296,15 @@ describe('Analytics API', () => {
     const student = await loginAs(w.studentUser.email);
     const res = await student.get(`/api/v1/analytics/students/${w.studentA.id}/progress`);
     expect(res.status).toBe(200);
-    expect(res.body.data.courses[0]).toMatchObject({ courseId: w.courseA.id, averageScore: 65, riskLevel: 'HIGH' });
+    expect(res.body.data.courses[0]).toMatchObject({
+      courseId: w.courseA.id,
+      averageScore: 65,
+      riskLevel: 'HIGH',
+    });
     expect(res.body.data.timeline[0]).toMatchObject({ percent: 85, classAverage: 87.5 });
-    expect((await student.get(`/api/v1/analytics/students/${w.studentB.id}/progress`)).status).toBe(404);
+    expect((await student.get(`/api/v1/analytics/students/${w.studentB.id}/progress`)).status).toBe(
+      404,
+    );
     expect((await student.get('/api/v1/analytics/overview')).status).toBe(403);
   });
 });

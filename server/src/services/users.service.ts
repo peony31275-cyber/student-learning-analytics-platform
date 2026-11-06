@@ -37,14 +37,22 @@ export async function listUsers(
     }),
   };
   const [items, total] = await prisma.$transaction([
-    prisma.user.findMany({ where, select: userSelect, orderBy: [{ role: 'asc' }, { lastName: 'asc' }], ...toSkipTake(q) }),
+    prisma.user.findMany({
+      where,
+      select: userSelect,
+      orderBy: [{ role: 'asc' }, { lastName: 'asc' }],
+      ...toSkipTake(q),
+    }),
     prisma.user.count({ where }),
   ]);
   return buildPage(items, total, q);
 }
 
 export async function getUser(admin: AuthUser, id: string) {
-  const user = await prisma.user.findFirst({ where: { id, schoolId: admin.schoolId }, select: userSelect });
+  const user = await prisma.user.findFirst({
+    where: { id, schoolId: admin.schoolId },
+    select: userSelect,
+  });
   if (!user) throw notFound('User');
   return user;
 }
@@ -64,7 +72,9 @@ export async function createUser(admin: AuthUser, input: CreateUserInput) {
         role: input.role,
         firstName: input.firstName,
         lastName: input.lastName,
-        ...(input.role === 'TEACHER' && { teacherProfile: { create: { department: input.department ?? null } } }),
+        ...(input.role === 'TEACHER' && {
+          teacherProfile: { create: { department: input.department ?? null } },
+        }),
       },
       select: { id: true },
     });
@@ -74,7 +84,8 @@ export async function createUser(admin: AuthUser, input: CreateUserInput) {
         where: { id: input.studentId!, schoolId: admin.schoolId, userId: null },
         data: { userId: user.id },
       });
-      if (linked.count !== 1) throw badRequest('Student profile not found or already linked to an account');
+      if (linked.count !== 1)
+        throw badRequest('Student profile not found or already linked to an account');
     }
     return tx.user.findUniqueOrThrow({ where: { id: user.id }, select: userSelect });
   });
@@ -82,7 +93,8 @@ export async function createUser(admin: AuthUser, input: CreateUserInput) {
 
 export async function updateUser(admin: AuthUser, id: string, input: UpdateUserInput) {
   const existing = await getUser(admin, id);
-  if (id === admin.id && input.isActive === false) throw badRequest('You cannot deactivate your own account');
+  if (id === admin.id && input.isActive === false)
+    throw badRequest('You cannot deactivate your own account');
 
   return prisma.user.update({
     where: { id },
@@ -93,7 +105,9 @@ export async function updateUser(admin: AuthUser, id: string, input: UpdateUserI
       // Deactivation revokes all live sessions immediately.
       ...(input.isActive === false && { tokenVersion: { increment: 1 } }),
       ...(input.department !== undefined &&
-        existing.teacherProfile && { teacherProfile: { update: { department: input.department } } }),
+        existing.teacherProfile && {
+          teacherProfile: { update: { department: input.department } },
+        }),
     },
     select: userSelect,
   });

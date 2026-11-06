@@ -11,7 +11,9 @@ const credentialLimiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   skip: () => isTest,
-  message: { error: { code: 'RATE_LIMITED', message: 'Too many attempts, please try again later' } },
+  message: {
+    error: { code: 'RATE_LIMITED', message: 'Too many attempts, please try again later' },
+  },
 });
 
 export const authRouter = Router();

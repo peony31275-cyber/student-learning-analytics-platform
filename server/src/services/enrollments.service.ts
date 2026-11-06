@@ -26,7 +26,12 @@ export async function listEnrollments(
     course: courseScope(user),
   };
   const [items, total] = await prisma.$transaction([
-    prisma.enrollment.findMany({ where, select: enrollmentSelect, orderBy: { enrolledAt: 'desc' }, ...toSkipTake(q) }),
+    prisma.enrollment.findMany({
+      where,
+      select: enrollmentSelect,
+      orderBy: { enrolledAt: 'desc' },
+      ...toSkipTake(q),
+    }),
     prisma.enrollment.count({ where }),
   ]);
   return buildPage(items, total, q);
@@ -53,7 +58,11 @@ export async function enroll(user: AuthUser, studentId: string, courseId: string
   if (existing?.status === 'ACTIVE') throw conflict('Student is already enrolled in this course');
 
   const enrollment = existing
-    ? await prisma.enrollment.update({ where: { id: existing.id }, data: { status: 'ACTIVE' }, select: enrollmentSelect })
+    ? await prisma.enrollment.update({
+        where: { id: existing.id },
+        data: { status: 'ACTIVE' },
+        select: enrollmentSelect,
+      })
     : await prisma.enrollment.create({ data: { studentId, courseId }, select: enrollmentSelect });
   return { enrollment, reactivated: Boolean(existing) };
 }

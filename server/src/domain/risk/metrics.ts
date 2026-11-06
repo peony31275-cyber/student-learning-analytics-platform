@@ -72,7 +72,8 @@ export function computeMetrics(
   const prior = percents.slice(0, Math.max(0, percents.length - recentWindow));
   const recentAverage = mean(recent);
   const priorAverage = mean(prior);
-  const trendDelta = recentAverage !== null && priorAverage !== null ? recentAverage - priorAverage : null;
+  const trendDelta =
+    recentAverage !== null && priorAverage !== null ? recentAverage - priorAverage : null;
   const slope = linearSlope(percents);
 
   // Completion: submitted (on time or late) / work that was expected. Excused work is not expected.

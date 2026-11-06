@@ -14,7 +14,13 @@ const courseSelect = {
   term: true,
   credits: true,
   createdAt: true,
-  teacher: { select: { id: true, department: true, user: { select: { firstName: true, lastName: true, email: true } } } },
+  teacher: {
+    select: {
+      id: true,
+      department: true,
+      user: { select: { firstName: true, lastName: true, email: true } },
+    },
+  },
   _count: { select: { enrollments: { where: { status: 'ACTIVE' } }, assessments: true } },
 } satisfies Prisma.CourseSelect;
 
@@ -49,7 +55,12 @@ export async function listCourses(
     ],
   };
   const [rows, total] = await prisma.$transaction([
-    prisma.course.findMany({ where, select: courseSelect, orderBy: [{ term: 'desc' }, { code: 'asc' }], ...toSkipTake(q) }),
+    prisma.course.findMany({
+      where,
+      select: courseSelect,
+      orderBy: [{ term: 'desc' }, { code: 'asc' }],
+      ...toSkipTake(q),
+    }),
     prisma.course.count({ where }),
   ]);
   return buildPage(rows.map(toCourseDto), total, q);
@@ -57,12 +68,15 @@ export async function listCourses(
 
 export async function getCourse(user: AuthUser, id: string) {
   await assertCourseAccess(prisma, user, id);
-  return toCourseDto(await prisma.course.findUniqueOrThrow({ where: { id }, select: courseSelect }));
+  return toCourseDto(
+    await prisma.course.findUniqueOrThrow({ where: { id }, select: courseSelect }),
+  );
 }
 
 async function resolveTeacher(user: AuthUser, requested: string | undefined): Promise<string> {
   if (user.role === 'TEACHER') {
-    if (requested && requested !== user.teacherId) throw forbidden('Teachers can only create their own courses');
+    if (requested && requested !== user.teacherId)
+      throw forbidden('Teachers can only create their own courses');
     return user.teacherId!;
   }
   if (!requested) throw badRequest('teacherId is required');
@@ -102,12 +116,21 @@ export async function createCourse(user: AuthUser, input: CreateCourseInput) {
 
 export async function updateCourse(user: AuthUser, id: string, input: UpdateCourseInput) {
   const current = await assertCourseAccess(prisma, user, id, { manage: true });
-  if (input.teacherId && user.role !== 'ADMIN') throw forbidden('Only admins can reassign a course');
+  if (input.teacherId && user.role !== 'ADMIN')
+    throw forbidden('Only admins can reassign a course');
   const teacherId = input.teacherId ? await resolveTeacher(user, input.teacherId) : undefined;
 
   if (input.code || input.term) {
-    const existing = await prisma.course.findUniqueOrThrow({ where: { id }, select: { code: true, term: true } });
-    await assertUniqueCode(current.schoolId, input.code ?? existing.code, input.term ?? existing.term, id);
+    const existing = await prisma.course.findUniqueOrThrow({
+      where: { id },
+      select: { code: true, term: true },
+    });
+    await assertUniqueCode(
+      current.schoolId,
+      input.code ?? existing.code,
+      input.term ?? existing.term,
+      id,
+    );
   }
   const course = await prisma.course.update({
     where: { id },
@@ -132,7 +155,15 @@ export async function getRoster(user: AuthUser, courseId: string) {
       id: true,
       status: true,
       enrolledAt: true,
-      student: { select: { id: true, studentNumber: true, firstName: true, lastName: true, gradeLevel: true } },
+      student: {
+        select: {
+          id: true,
+          studentNumber: true,
+          firstName: true,
+          lastName: true,
+          gradeLevel: true,
+        },
+      },
     },
     orderBy: [{ student: { lastName: 'asc' } }, { student: { firstName: 'asc' } }],
   });

@@ -13,7 +13,10 @@ import {
   studentsController as students,
   usersController as users,
 } from '../controllers/resource.controllers.js';
-import { analyticsController as analytics, riskController as risk } from '../controllers/insights.controllers.js';
+import {
+  analyticsController as analytics,
+  riskController as risk,
+} from '../controllers/insights.controllers.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requireRole } from '../middleware/authorize.js';
 import { authRouter } from './auth.routes.js';
