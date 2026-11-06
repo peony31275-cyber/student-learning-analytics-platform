@@ -64,6 +64,8 @@ function AppShell() {
   const [open, setOpen] = useState(false);
   if (!user) return null;
   const links = NAV.filter((n) => n.roles.includes(user.role));
+  const fullName = `${user.firstName} ${user.lastName}`;
+  const roleLabel = user.role.charAt(0) + user.role.slice(1).toLowerCase();
 
   return (
     <div className="shell">
@@ -81,11 +83,14 @@ function AppShell() {
         </nav>
         <div className="sidebar-footer">
           <div>
-            <div style={{ fontWeight: 600 }}>
-              {user.firstName} {user.lastName}
-            </div>
-            <div className="subtle">
-              {user.role.charAt(0) + user.role.slice(1).toLowerCase()} · {user.email}
+            <div className="sidebar-user-name break-anywhere">{fullName}</div>
+            {/* Role and email share a line when they fit, otherwise the email moves to
+                its own line; only an email wider than the sidebar is cut (full text on hover). */}
+            <div className="sidebar-user-meta subtle">
+              <span>{`${roleLabel} · `}</span>
+              <span className="truncate" title={user.email}>
+                {user.email}
+              </span>
             </div>
           </div>
           <button className="btn btn-sm" onClick={() => void signOut()}>

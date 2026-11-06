@@ -37,7 +37,7 @@ evaluated 180 enrollments in 349 ms on a local database: 139 LOW, 15 MEDIUM, 26 
 
 ```
 server  Test Files 5 passed (5)   Tests 86 passed (86)
-web     Test Files 2 passed (2)   Tests 14 passed (14)
+web     Test Files 3 passed (3)   Tests 19 passed (19)
 ```
 
 **Server coverage** (`npm run test:coverage -w server`): statements 89.18% (882/989),
@@ -82,6 +82,17 @@ with 0 console errors under the CSP, recorded attendance, reloaded and confirmed
    the fix) and two server tests for cookie clearing; verified in headless Edge for a teacher and
    a student: redirect, `Set-Cookie` expiry, no cookie left, Back button and direct URLs stay on
    `/login`, `/auth/me` returns 401.
+8. **Long emails overflowed the sidebar (found in manual testing).** With
+   `benjamin.anderson.20@students.riverside.edu`, the email ran 56 px past the sidebar on desktop
+   (48 px in the mobile drawer), and the Sign out button stuck out with it. Cause: the footer is a
+   grid with an implicit `auto` column, which grows to its widest unbreakable content, and an email
+   has no line-break opportunities. Fixed with `grid-template-columns: minmax(0, 1fr)`; role and
+   email are now a wrapping flex row, so an email that fits stays fully visible (beside or below the
+   role, as before), and only an email wider than the sidebar is cut with `text-overflow: ellipsis`
+   (`min-width: 0` on the flex item) and shown in full in a `title` tooltip. The same email widened
+   the Account page at 320 px (scroll width 324 px); its header now uses `overflow-wrap: anywhere`.
+   Five RTL tests load the real stylesheet and assert the computed styles (all five failed before
+   the fix); jsdom has no layout engine, so the pixel check runs in a real browser.
 
 ## Not yet done
 

@@ -156,6 +156,18 @@ a:hover {
 .num {
   font-variant-numeric: tabular-nums;
 }
+/* One line, cut with an ellipsis. min-width: 0 lets it shrink when it is a flex
+   or grid item (their default min-width: auto is the full text width). */
+.truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Long unbreakable strings (emails, URLs) wrap instead of widening the page. */
+.break-anywhere {
+  overflow-wrap: anywhere;
+}
 .sr-only {
   position: absolute;
   width: 1px;
@@ -214,7 +226,19 @@ a:hover {
   border-top: 1px solid var(--border);
   padding: 12px 8px 0;
   display: grid;
+  /* The implicit `auto` column grows to its widest unbreakable content. An email
+     has no line-break opportunities, so a long one widened the column (and the
+     Sign out button) past the sidebar. The 0 minimum pins it to the sidebar. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
+}
+.sidebar-user-name {
+  font-weight: 600;
+}
+.sidebar-user-meta {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 0.3em;
 }
 .main {
   padding: 28px 32px 48px;

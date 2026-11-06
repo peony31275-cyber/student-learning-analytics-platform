@@ -19,7 +19,10 @@ export function AccountPage() {
   });
   return (
     <>
-      <PageHeader title="Account" subtitle={user?.email} />
+      <PageHeader
+        title="Account"
+        subtitle={user && <span className="break-anywhere">{user.email}</span>}
+      />
       <div className="grid grid-2">
         <Card
           title="Change password"
