@@ -1,5 +1,7 @@
 # Student Learning Analytics Platform
 
+**[Live Demo](https://learning-analytics-9bfz.onrender.com)** · [Demo accounts](#demo-accounts)
+
 A full-stack web application for schools: teachers manage students, courses, grades and
 attendance; a **rule-based, explainable early-warning engine** flags students who need
 support; students track their own progress. Admins manage users, school data and the
@@ -7,6 +9,23 @@ risk-engine configuration.
 
 > Stack: React 19 · TypeScript · Vite · TanStack Query · Recharts · Node.js · Express 5 ·
 > Zod · Prisma 7 · PostgreSQL (Neon) · Vitest · Supertest · React Testing Library
+
+## Demo accounts
+
+Sign in on the [live demo](https://learning-analytics-9bfz.onrender.com) or a
+[local install](#getting-started-local). Every account uses the password `Password123`; the
+**Demo accounts** buttons on the sign-in page fill in the form for you.
+
+| Role    | Email                                                   | What to try                                                                                    |
+| ------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Admin   | `admin@riverside.edu`                                   | School-wide dashboard and data, **Users** (staff accounts), **Settings** (early-warning rules) |
+| Teacher | `teacher1@riverside.edu` (also `teacher2`, `teacher3`)  | Dashboard, students and risk alerts for the courses they teach; grade entry and attendance     |
+| Student | `student1@riverside.edu` (also `student2` … `student5`) | **My progress**: own grades and attendance, plus their risk level with reasons and tips        |
+
+All student, teacher, and school records are synthetic demo data created for testing and demonstration purposes.
+
+The live demo runs on a free Render instance, which sleeps after a period without traffic, so the
+first visit can take up to a minute while the server starts.
 
 ## Features
 
@@ -56,13 +75,8 @@ npm run db:seed -w server                   # demo data + initial risk evaluatio
 npm run dev                                 # terminal 2: API on :4000 and web on :5173
 ```
 
-Open http://localhost:5173. Demo accounts (password `Password123`):
-
-| Role    | Email                                                   |
-| ------- | ------------------------------------------------------- |
-| Admin   | `admin@riverside.edu`                                   |
-| Teacher | `teacher1@riverside.edu` (also `teacher2`, `teacher3`)  |
-| Student | `student1@riverside.edu` (also `student2` … `student5`) |
+Open http://localhost:5173 and sign in with one of the [demo accounts](#demo-accounts) (the seed
+creates them).
 
 ### Trying student activation and first sign-in locally
 
@@ -129,16 +143,17 @@ Measured on the development machine (see [docs/DEV_LOG.md](docs/DEV_LOG.md) for 
 
 ## Deployment
 
-One Node web service (e.g. Render) runs Express, which serves both `/api` and the built React app,
-so the auth cookie is same-origin. The database is Neon PostgreSQL. `render.yaml` is a ready-made
-blueprint; step-by-step instructions, including Neon setup, are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+The [live demo](https://learning-analytics-9bfz.onrender.com) is one Render web service: Express
+serves both `/api` and the built React app, so the auth cookie is same-origin. The database is Neon
+PostgreSQL. `render.yaml` is a ready-made blueprint; step-by-step instructions, including Neon
+setup, are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Project structure
 
 ```
 server/
   prisma/            schema.prisma, migrations/, seed.ts
-  scripts/           local PostgreSQL launcher (embedded-postgres)
+  scripts/           local PostgreSQL launcher (embedded-postgres), local-only DB guard
   src/
     config/          Zod-validated environment
     controllers/     HTTP adapters (parse → service → respond)
