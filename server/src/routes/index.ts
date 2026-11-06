@@ -1,7 +1,8 @@
 /**
- * API route map. Authentication is applied once for everything after /auth;
- * each route then declares which roles may call it (coarse RBAC). Row-level
- * rules are enforced again inside the services.
+ * API route map (everything except /auth, which app.ts mounts first).
+ * Authentication is applied once for all of these routes; each route then
+ * declares which roles may call it (coarse RBAC). Row-level rules are enforced
+ * again inside the services.
  */
 import { Router } from 'express';
 import {
@@ -19,7 +20,6 @@ import {
 } from '../controllers/insights.controllers.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requireRole } from '../middleware/authorize.js';
-import { authRouter } from './auth.routes.js';
 
 const ADMIN = requireRole('ADMIN');
 const STAFF = requireRole('ADMIN', 'TEACHER');
@@ -27,7 +27,6 @@ const ANY = requireRole('ADMIN', 'TEACHER', 'STUDENT');
 
 export const apiRouter = Router();
 
-apiRouter.use('/auth', authRouter);
 apiRouter.use(authenticate);
 
 // School & users (admin)

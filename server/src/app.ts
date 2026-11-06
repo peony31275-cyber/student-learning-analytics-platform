@@ -9,13 +9,24 @@ import { env, isProduction, isTest } from './config/env.js';
 import { logger } from './lib/logger.js';
 import { prisma } from './lib/prisma.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
+import type { CredentialRateLimit } from './middleware/rate-limit.js';
+import { createAuthRouter } from './routes/auth.routes.js';
 import { apiRouter } from './routes/index.js';
+
+export interface AppOptions {
+  /** Rate limit for the credential endpoints; null turns it off (default in tests). */
+  authRateLimit?: CredentialRateLimit | null;
+}
 
 /**
  * Builds the Express application without binding a port, so integration tests
  * (Supertest) can exercise the full middleware stack in-process.
  */
-export function createApp() {
+export function createApp({
+  authRateLimit = isTest
+    ? null
+    : { limit: env.AUTH_RATE_LIMIT_MAX, windowMs: env.AUTH_RATE_LIMIT_WINDOW_MINUTES * 60_000 },
+}: AppOptions = {}) {
   const app = express();
 
   // Behind Render/Heroku-style proxies: trust the first hop so req.ip (used by
@@ -52,6 +63,7 @@ export function createApp() {
       message: { error: { code: 'RATE_LIMITED', message: 'Too many requests, slow down' } },
     }),
   );
+  app.use('/api/v1/auth', createAuthRouter(authRateLimit));
   app.use('/api/v1', apiRouter);
   app.use('/api', notFoundHandler);
 

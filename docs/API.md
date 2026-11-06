@@ -21,6 +21,12 @@ automatically. Non-browser clients can send the same JWT as `Authorization: Bear
 `401` not authenticated / invalid session · `403` role not allowed · `404` not found _or outside
 your data scope_ · `409` conflict (duplicate, constraint) · `429` rate limited · `500` unexpected.
 
+**Rate limits** (per client IP): `POST /auth/login`, `POST /auth/register` and
+`PATCH /auth/password` each allow 20 **failed** attempts per 15 minutes (successful requests are not
+counted); all of `/api/v1` allows 600 requests per minute. Responses carry `RateLimit-Policy` and
+`RateLimit` headers (IETF draft 8); a blocked request gets `429`, a `Retry-After` header in seconds
+and `{ "error": { "code": "RATE_LIMITED", "message": "Too many failed attempts. Try again in 6 minutes." } }`.
+
 **Pagination:** list endpoints accept `page` (≥1, default 1) and `pageSize` (1–100, default 20).
 
 Roles: **A** = Admin, **T** = Teacher, **S** = Student. "Scoped" means results are limited to

@@ -61,10 +61,24 @@ controller has one job: turn HTTP into a typed service call.
 - Login returns the same 401 message for an unknown email and a wrong password, and runs a dummy
   bcrypt comparison when the email does not exist, so response timing does not reveal which
   accounts exist.
-- Credential endpoints have a per-IP rate limit (20 per 15 minutes); the whole API has a coarser one.
+- Credential endpoints (login, registration, password change) each have their own per-IP limit on
+  **failed** attempts: 20 per 15 minutes in production (`AUTH_RATE_LIMIT_MAX`,
+  `AUTH_RATE_LIMIT_WINDOW_MINUTES`; local development keeps 20 but uses a 1-minute window).
+  Successful sign-ins are not counted, so switching accounts never locks anyone out. A blocked
+  request gets `429` with `Retry-After` and a message saying when to try again. The whole API also
+  has a coarser limit of 600 requests per minute per IP.
 - Public registration can only create **STUDENT** accounts, and only for a student record the
   school already created (matching student number + email). A `role` field in the request is ignored.
 
+_Q: Why count only failed attempts, and why not reset the counter after a successful sign-in?_
+Successful sign-ins are not an attack, and counting them locked out legitimate users (a tester
+switching roles, or a classroom behind one school IP). Failures are never reset by a success,
+because the key is the IP: anyone with one valid account could otherwise sign in every few tries
+and keep guessing other accounts' passwords.
+_Q: Per IP or per account?_ Per IP today. Per account alone would let an attacker lock any user
+out on purpose; per IP alone shares one budget across a NAT. The usual next step is two limits: a
+strict one per (IP, account) and a looser one per IP. The in-memory store also needs Redis once
+there is more than one server instance.
 _Q: Why not store the JWT in localStorage?_ Any XSS could read it. An httpOnly cookie
 cannot be read by script, and SameSite handles CSRF for a same-origin app.
 _Q: Stateless JWT but you hit the DB every request, so why JWT?_ The token still carries a

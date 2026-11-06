@@ -7,6 +7,9 @@ const app = createApp();
 
 const server = app.listen(env.PORT, () => {
   logger.info(`API listening on http://localhost:${env.PORT} (${env.NODE_ENV})`);
+  logger.info(
+    `Sign-in rate limit: ${env.AUTH_RATE_LIMIT_MAX} failed attempts per IP per ${env.AUTH_RATE_LIMIT_WINDOW_MINUTES} min`,
+  );
 });
 
 /** Graceful shutdown: stop accepting connections, finish in-flight requests, close the pool. */

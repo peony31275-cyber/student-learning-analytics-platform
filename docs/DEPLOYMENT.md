@@ -64,7 +64,10 @@ git push -u origin main
 | `CORS_ORIGINS` | your Render URL, e.g. `https://learning-analytics.onrender.com`                                                                |
 | `JWT_SECRET`   | generated automatically by the blueprint (or `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`) |
 
-`NODE_ENV=production`, `WEB_DIST_DIR=web/dist` and the rest are already set in `render.yaml`. 4. Deploy. `npm start` runs `prisma migrate deploy` before starting the server, so the schema is
+`NODE_ENV=production`, `WEB_DIST_DIR=web/dist` and the rest are already set in `render.yaml`.
+Leave `AUTH_RATE_LIMIT_MAX` and `AUTH_RATE_LIMIT_WINDOW_MINUTES` unset in production: the defaults
+(20 failed sign-in attempts per IP per 15 minutes) are the production values. The 1-minute window
+in `.env.example` is for local development only. 4. Deploy. `npm start` runs `prisma migrate deploy` before starting the server, so the schema is
 always current.
 
 ### Seeding demo data in production (optional)

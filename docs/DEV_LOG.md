@@ -36,7 +36,7 @@ evaluated 180 enrollments in 349 ms on a local database: 139 LOW, 15 MEDIUM, 26 
 **Tests** (`npm test`):
 
 ```
-server  Test Files 5 passed (5)   Tests 86 passed (86)
+server  Test Files 6 passed (6)   Tests 92 passed (92)
 web     Test Files 3 passed (3)   Tests 19 passed (19)
 ```
 
@@ -93,6 +93,24 @@ with 0 console errors under the CSP, recorded attendance, reloaded and confirmed
    the Account page at 320 px (scroll width 324 px); its header now uses `overflow-wrap: anywhere`.
    Five RTL tests load the real stylesheet and assert the computed styles (all five failed before
    the fix); jsdom has no layout engine, so the pixel check runs in a real browser.
+9. **Switching accounts triggered "Too many attempts" (found in manual testing).** The credential
+   limiter counted every request per IP, successful sign-ins included, and login, registration and
+   password change shared one counter. During development all traffic arrives from localhost
+   through the Vite proxy, so ordinary role switching (plus automated browser checks) used up the
+   20 attempts in 15 minutes. The limiter was also skipped in tests, so none of this was covered.
+   Fixed: only failed attempts count (`skipSuccessfulRequests`), each endpoint has its own counter,
+   the 429 message says when to retry, and the limits come from `AUTH_RATE_LIMIT_MAX` /
+   `AUTH_RATE_LIMIT_WINDOW_MINUTES` (production defaults 20 per 15 min; `.env.example` uses a
+   1-minute window for development). Six integration tests build an app with a small limit (five
+   failed against the old behavior). In headless Edge, 30 sign-ins switching between Admin, Teacher
+   and Student all returned 200; failed attempts were blocked with `429` and `Retry-After`, the login
+   page showed "Try again in 15 seconds", and sign-in worked again after the window.
+
+## Environment notes
+
+- On Windows, stopping the shell that runs `npm run dev` can leave `tsx watch` and its child running,
+  still holding port 4000 with the old configuration. Check with
+  `Get-NetTCPConnection -LocalPort 4000 -State Listen` and stop the tree with `taskkill /PID <pid> /T /F`.
 
 ## Not yet done
 
