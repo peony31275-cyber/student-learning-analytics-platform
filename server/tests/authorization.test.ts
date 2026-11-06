@@ -163,4 +163,118 @@ describe('Authorization (RBAC + data scoping)', () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
+  describe('account security: RBAC and object-level authorization', () => {
+    it('students cannot call any admin API', async () => {
+      const student = await loginAs(w.studentUser.email);
+      const attempts: [string, () => Promise<{ status: number }>][] = [
+        ['list users', () => student.get('/api/v1/users')],
+        ['read user', () => student.get(`/api/v1/users/${w.admin.id}`)],
+        [
+          'create admin',
+          () =>
+            student.post('/api/v1/users').send({
+              role: 'ADMIN',
+              email: 'x@evil.test',
+              firstName: 'X',
+              lastName: 'Y',
+              password: 'Secret123',
+            }),
+        ],
+        [
+          'disable teacher',
+          () => student.patch(`/api/v1/users/${w.teacherA.id}`).send({ isActive: false }),
+        ],
+        ['edit school', () => student.patch('/api/v1/school').send({ name: 'Hacked' })],
+        ['edit risk rules', () => student.put('/api/v1/settings/risk').send({})],
+        ['delete course', () => student.delete(`/api/v1/courses/${w.courseA.id}`)],
+        ['issue invite', () => student.post(`/api/v1/students/${w.studentA.id}/activation-invite`)],
+      ];
+      for (const [label, call] of attempts)
+        expect([label, (await call()).status]).toEqual([label, 403]);
+      expect(await prisma.user.count({ where: { email: 'x@evil.test' } })).toBe(0);
+    });
+
+    it('teachers cannot create admin, teacher or student accounts', async () => {
+      const teacher = await loginAs(w.teacherA.email);
+      for (const role of ['ADMIN', 'TEACHER', 'STUDENT']) {
+        const res = await teacher.post('/api/v1/users').send({
+          role,
+          email: `${role.toLowerCase()}@evil.test`,
+          firstName: 'E',
+          lastName: 'Vil',
+          password: 'Secret123',
+          studentId: w.studentB.id,
+        });
+        expect([role, res.status]).toEqual([role, 403]);
+      }
+      expect(await prisma.user.count({ where: { email: { endsWith: '@evil.test' } } })).toBe(0);
+    });
+
+    it("teachers cannot reach another teacher's student or course by changing ids in the URL", async () => {
+      const teacher = await loginAs(w.teacherA.email);
+      const [s, c] = [w.studentB.id, w.courseB.id];
+      for (const path of [
+        `/api/v1/students/${s}`,
+        `/api/v1/students/${s}/grades`,
+        `/api/v1/students/${s}/attendance`,
+        `/api/v1/students/${s}/risk`,
+        `/api/v1/analytics/students/${s}/progress`,
+        `/api/v1/courses/${c}`,
+        `/api/v1/courses/${c}/students`,
+        `/api/v1/courses/${c}/assessments`,
+        `/api/v1/courses/${c}/attendance?date=2026-11-02`,
+        `/api/v1/courses/${c}/attendance/sessions`,
+      ]) {
+        expect([path, (await teacher.get(path)).status]).toEqual([path, 404]);
+      }
+      const writes: [string, () => Promise<{ status: number }>][] = [
+        [
+          'edit student',
+          () => teacher.patch(`/api/v1/students/${s}`).send({ firstName: 'Changed' }),
+        ],
+        ['invite student', () => teacher.post(`/api/v1/students/${s}/activation-invite`)],
+        ['enroll', () => teacher.post('/api/v1/enrollments').send({ studentId: s, courseId: c })],
+        [
+          'take attendance',
+          () =>
+            teacher.put(`/api/v1/courses/${c}/attendance`).send({
+              date: '2026-11-02',
+              records: [{ studentId: s, status: 'ABSENT' }],
+            }),
+        ],
+      ];
+      for (const [label, call] of writes)
+        expect([label, (await call()).status]).toEqual([label, 404]);
+
+      // Scoped lists leave the other teacher's student out entirely.
+      const alerts = await teacher.get(`/api/v1/risk-alerts?studentId=${s}`);
+      expect([alerts.status, alerts.body.data]).toEqual([200, []]);
+      const after = await prisma.studentProfile.findUniqueOrThrow({ where: { id: s } });
+      expect(after.firstName).not.toBe('Changed');
+      expect(await prisma.activationToken.count()).toBe(0);
+      expect(await prisma.attendance.count({ where: { studentId: s } })).toBe(0);
+    });
+
+    it('disabled users cannot access protected resources, even with a session they already had', async () => {
+      const teacher = await loginAs(w.teacherA.email);
+      expect((await teacher.get('/api/v1/courses')).status).toBe(200);
+      const admin = await loginAs(w.admin.email);
+      const disable = await admin.patch(`/api/v1/users/${w.teacherA.id}`).send({ isActive: false });
+      expect(disable.status).toBe(200);
+
+      for (const path of [
+        '/api/v1/courses',
+        `/api/v1/students/${w.studentA.id}`,
+        '/api/v1/auth/me',
+      ]) {
+        expect([path, (await teacher.get(path)).status]).toEqual([path, 401]);
+      }
+      await expect(loginAs(w.teacherA.email)).rejects.toThrow(/401/);
+
+      // Re-enabling does not revive the old session; the teacher signs in again.
+      await admin.patch(`/api/v1/users/${w.teacherA.id}`).send({ isActive: true });
+      expect((await teacher.get('/api/v1/courses')).status).toBe(401);
+      await expect(loginAs(w.teacherA.email)).resolves.toBeDefined();
+    });
+  });
 });

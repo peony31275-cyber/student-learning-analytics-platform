@@ -29,6 +29,8 @@ export interface SessionUser {
   schoolId: string;
   teacherId: string | null;
   studentId: string | null;
+  /** Signed in with a temporary password: must set their own before anything else. */
+  mustChangePassword: boolean;
 }
 
 export interface StudentListItem {
@@ -53,6 +55,11 @@ export interface StudentDetail {
   gradeLevel: number;
   status: StudentStatus;
   hasAccount: boolean;
+  account: {
+    status: 'NONE' | 'ACTIVE' | 'DISABLED';
+    /** Staff only: an unused invite that has not expired (never the token). */
+    pendingInvite: { createdAt: string; expiresAt: string } | null;
+  };
   riskLevel: RiskLevel | null;
   enrollments: {
     id: string;
@@ -278,6 +285,7 @@ export interface AdminUser {
   firstName: string;
   lastName: string;
   isActive: boolean;
+  mustChangePassword: boolean;
   lastLoginAt: string | null;
   createdAt: string;
   teacherProfile: { id: string; department: string | null; title: string | null } | null;
@@ -311,4 +319,19 @@ export interface RecalculationSummary {
   evaluated: number;
   byLevel: LevelCounts;
   durationMs: number;
+}
+
+/** Who an activation link is for (shown before the student picks a password). */
+export interface ActivationPreview {
+  firstName: string;
+  lastName: string;
+  email: string;
+  school: string;
+}
+
+/** Result of issuing an invite. `activationUrl` exists only with the dev-link delivery. */
+export interface ActivationInvite {
+  delivery: 'dev-link';
+  expiresAt: string;
+  activationUrl: string;
 }

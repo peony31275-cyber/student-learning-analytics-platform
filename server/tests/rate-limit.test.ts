@@ -2,7 +2,7 @@ import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
-import { PASSWORD, createSchool, createUser, resetDb } from './helpers/factories.js';
+import { PASSWORD, createSchool, createStudent, createUser, resetDb } from './helpers/factories.js';
 
 /**
  * The credential rate limiter is off in the shared test app (tests sign in
@@ -16,10 +16,12 @@ const WRONG = 'Wrong-password1';
 
 describe('credential rate limiting', () => {
   const emails: Record<'teacher' | 'admin', string> = { teacher: '', admin: '' };
+  let schoolId = '';
 
   beforeAll(async () => {
     await resetDb();
     const school = await createSchool();
+    schoolId = school.id;
     emails.teacher = (await createUser(school.id, 'TEACHER')).email;
     emails.admin = (await createUser(school.id, 'ADMIN')).email;
   });
@@ -88,19 +90,35 @@ describe('credential rate limiting', () => {
 
   it('gives each credential endpoint its own budget', async () => {
     const app = appWithLimit(2);
-    const register = () =>
-      request(app).post('/api/v1/auth/register').send({
-        email: 'nobody@test.edu',
-        password: 'Secret123',
-        studentNumber: 'NOPE',
-        firstName: 'No',
-        lastName: 'Body',
-      });
-    expect((await register()).status).toBe(400);
-    expect((await register()).status).toBe(400);
-    expect((await register()).status).toBe(429);
+    const activate = () =>
+      request(app)
+        .post('/api/v1/auth/activation')
+        .send({ token: 'x'.repeat(43), password: 'Secret123' });
+    expect((await activate()).status).toBe(400);
+    expect((await activate()).status).toBe(400);
+    expect((await activate()).status).toBe(429);
 
-    // Failed registrations must not lock the same network out of signing in.
+    // Failed activations must not lock the same network out of signing in.
     expect((await login(app, WRONG)).status).toBe(401);
+  });
+
+  it('limits failed activation checks, and every invite issued', async () => {
+    const app = appWithLimit(2);
+    const verify = () =>
+      request(app)
+        .post('/api/v1/auth/activation/verify')
+        .send({ token: 'y'.repeat(43) });
+    expect((await verify()).status).toBe(400);
+    expect((await verify()).status).toBe(400);
+    expect((await verify()).status).toBe(429);
+
+    // Issuing an invite counts even when it succeeds: each one creates a token.
+    const student = await createStudent(schoolId, { email: 'limit@test.edu' });
+    const admin = request.agent(app);
+    await admin.post('/api/v1/auth/login').send({ email: emails.admin, password: PASSWORD });
+    const invite = () => admin.post(`/api/v1/students/${student.id}/activation-invite`);
+    expect((await invite()).status).toBe(201);
+    expect((await invite()).status).toBe(201);
+    expect((await invite()).status).toBe(429);
   });
 });

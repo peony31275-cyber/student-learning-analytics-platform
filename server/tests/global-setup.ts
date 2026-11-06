@@ -1,4 +1,6 @@
 import { execSync } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type EmbeddedPostgres from 'embedded-postgres';
 import { startLocalPostgres } from '../scripts/embedded-pg.js';
 import { LOCAL_TEST_PG_PORT, TEST_DATABASE_URL, USE_EXTERNAL_DB } from './test-env.js';
@@ -15,7 +17,8 @@ let pg: EmbeddedPostgres | undefined;
 export async function setup() {
   if (!USE_EXTERNAL_DB) {
     pg = await startLocalPostgres({
-      dataDir: '.pgdata-test',
+      // Next to the server package, whatever directory vitest was started from.
+      dataDir: path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '.pgdata-test'),
       port: LOCAL_TEST_PG_PORT,
       databases: ['sla_test'],
       quiet: true,

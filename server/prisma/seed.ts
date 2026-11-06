@@ -187,7 +187,7 @@ const ASSESSMENT_PLAN: {
 export async function seed(prisma: PrismaClient) {
   console.log('Clearing existing data...');
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE risk_alerts, grade_history, grades, attendance, assessments, enrollments, courses, student_profiles, teacher_profiles, users, schools RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE activation_tokens, risk_alerts, grade_history, grades, attendance, assessments, enrollments, courses, student_profiles, teacher_profiles, users, schools RESTART IDENTITY CASCADE',
   );
 
   const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 10);

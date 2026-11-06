@@ -6,6 +6,7 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { currentUser } from '../middleware/authorize.js';
+import * as activation from '../services/activation.service.js';
 import * as attendance from '../services/attendance.service.js';
 import * as courses from '../services/courses.service.js';
 import * as enrollments from '../services/enrollments.service.js';
@@ -58,6 +59,9 @@ export const studentsController = {
   },
   get: async (req: Request, res: Response) => {
     ok(res, await students.getStudent(currentUser(req), id(req)));
+  },
+  createInvite: async (req: Request, res: Response) => {
+    created(res, await activation.createInvite(currentUser(req), id(req)));
   },
   create: async (req: Request, res: Response) => {
     created(

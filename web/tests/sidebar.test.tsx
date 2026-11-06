@@ -42,6 +42,7 @@ const makeUser = (role: Role, firstName: string, lastName: string, email: string
   schoolId: 's1',
   teacherId: role === 'TEACHER' ? 't1' : null,
   studentId: role === 'STUDENT' ? 'st1' : null,
+  mustChangePassword: false,
 });
 
 const USERS = [

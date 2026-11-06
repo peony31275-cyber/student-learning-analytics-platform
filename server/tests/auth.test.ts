@@ -2,15 +2,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { signToken } from '../src/lib/jwt.js';
 import { prisma } from '../src/lib/prisma.js';
-import {
-  PASSWORD,
-  app,
-  createSchool,
-  createStudent,
-  createUser,
-  loginAs,
-  resetDb,
-} from './helpers/factories.js';
+import { PASSWORD, app, createSchool, createUser, loginAs, resetDb } from './helpers/factories.js';
 
 describe('Authentication', () => {
   let schoolId: string;
@@ -171,17 +163,8 @@ describe('Authentication', () => {
     });
   });
 
-  describe('POST /api/v1/auth/register (student activation)', () => {
-    const body = (over: Record<string, string> = {}) => ({
-      email: 'new.student@test.edu',
-      password: 'Secret123',
-      studentNumber: 'S-1',
-      firstName: 'New',
-      lastName: 'Student',
-      ...over,
-    });
-
-    it('creates a STUDENT account linked to the matching profile and stores a bcrypt hash', async () => {
+  describe('old self-registration (student number + email)', () => {
+    it('no longer exists: knowing a student number and email cannot create an account', async () => {
       const profile = await prisma.studentProfile.create({
         data: {
           schoolId,
@@ -189,67 +172,25 @@ describe('Authentication', () => {
           firstName: 'New',
           lastName: 'Student',
           email: 'new.student@test.edu',
-          gradeLevel: 9,
+          gradeLevel: 10,
         },
       });
-
-      const res = await request(app).post('/api/v1/auth/register').send(body());
-
-      expect(res.status).toBe(201);
-      expect(res.body.data.user).toMatchObject({ role: 'STUDENT', studentId: profile.id });
-      const stored = await prisma.user.findUniqueOrThrow({
-        where: { email: 'new.student@test.edu' },
+      const res = await request(app).post('/api/v1/auth/register').send({
+        email: 'new.student@test.edu',
+        password: 'Secret123',
+        studentNumber: 'S-1',
+        firstName: 'New',
+        lastName: 'Student',
       });
-      expect(stored.passwordHash).not.toBe('Secret123');
-      expect(stored.passwordHash).toMatch(/^\$2[aby]\$/);
-    });
-
-    it('ignores a client-supplied role (no privilege escalation)', async () => {
-      await createStudent(schoolId, { email: 'new.student@test.edu' }).then((p) =>
-        prisma.studentProfile.update({ where: { id: p.id }, data: { studentNumber: 'S-1' } }),
-      );
-      const res = await request(app)
-        .post('/api/v1/auth/register')
-        .send({ ...body(), role: 'ADMIN' });
-      expect(res.status).toBe(201);
-      expect(res.body.data.user.role).toBe('STUDENT');
-    });
-
-    it('rejects registration without a matching student record', async () => {
-      const res = await request(app)
-        .post('/api/v1/auth/register')
-        .send(body({ studentNumber: 'NOPE' }));
-      expect(res.status).toBe(400);
-    });
-
-    it('rejects a profile that is already linked to an account', async () => {
-      const existing = await createUser(schoolId, 'STUDENT');
-      await prisma.studentProfile.create({
-        data: {
-          schoolId,
-          userId: existing.id,
-          studentNumber: 'S-1',
-          firstName: 'A',
-          lastName: 'B',
-          email: 'new.student@test.edu',
-          gradeLevel: 9,
-        },
-      });
-      const res = await request(app).post('/api/v1/auth/register').send(body());
-      expect(res.status).toBe(409);
-    });
-
-    it('enforces the password policy', async () => {
-      const res = await request(app)
-        .post('/api/v1/auth/register')
-        .send(body({ password: 'short' }));
-      expect(res.status).toBe(400);
-      expect(res.body.error.details[0].path).toBe('password');
+      expect(res.status).toBe(401); // unknown public route: falls through to authentication
+      expect(await prisma.user.count({ where: { email: 'new.student@test.edu' } })).toBe(0);
+      const after = await prisma.studentProfile.findUniqueOrThrow({ where: { id: profile.id } });
+      expect(after.userId).toBeNull();
     });
   });
 
   describe('PATCH /api/v1/auth/password', () => {
-    it('changes the password, revokes old sessions and keeps the caller logged in', async () => {
+    it('changes the password and ends every session, including the caller’s', async () => {
       const user = await createUser(schoolId, 'TEACHER');
       const otherSession = await loginAs(user.email);
       const agent = await loginAs(user.email);
@@ -257,11 +198,29 @@ describe('Authentication', () => {
       const res = await agent
         .patch('/api/v1/auth/password')
         .send({ currentPassword: PASSWORD, newPassword: 'NewPass456' });
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(204);
+      expect(String(res.headers['set-cookie'])).toMatch(/^sla_token=;.*Expires=Thu, 01 Jan 1970/);
 
-      expect((await agent.get('/api/v1/auth/me')).status).toBe(200);
+      expect((await agent.get('/api/v1/auth/me')).status).toBe(401);
       expect((await otherSession.get('/api/v1/auth/me')).status).toBe(401);
       await expect(loginAs(user.email, 'NewPass456')).resolves.toBeDefined();
+      expect(
+        (
+          await request(app)
+            .post('/api/v1/auth/login')
+            .send({ email: user.email, password: PASSWORD })
+        ).status,
+      ).toBe(401);
+    });
+
+    it('rejects reusing the current password as the new one', async () => {
+      const user = await createUser(schoolId, 'TEACHER');
+      const agent = await loginAs(user.email);
+      const res = await agent
+        .patch('/api/v1/auth/password')
+        .send({ currentPassword: PASSWORD, newPassword: PASSWORD });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details[0].path).toBe('newPassword');
     });
 
     it('rejects an incorrect current password', async () => {

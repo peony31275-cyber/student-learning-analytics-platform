@@ -9,6 +9,7 @@ import type {
   UpdateStudentInput,
 } from '../validators/resource.validators.js';
 import { assertStudentAccess, courseScope, studentScope } from './access.service.js';
+import { pendingInvite } from './activation.service.js';
 import { highestRisk, levelsAtLeast } from './risk-level.js';
 
 /** Selection depends on the caller: counts and risk are limited to courses they can see. */
@@ -108,6 +109,7 @@ export async function getStudent(user: AuthUser, id: string) {
       gradeLevel: true,
       status: true,
       userId: true,
+      user: { select: { isActive: true } },
       createdAt: true,
       enrollments: {
         // Teachers only see the enrollments of their own courses.
@@ -141,9 +143,15 @@ export async function getStudent(user: AuthUser, id: string) {
       },
     },
   });
+  const { user: account, ...profile } = student;
   return {
-    ...student,
+    ...profile,
     hasAccount: student.userId !== null,
+    account: {
+      status: !account ? 'NONE' : account.isActive ? 'ACTIVE' : 'DISABLED',
+      // Staff see whether an unused invite is outstanding (never the token itself).
+      pendingInvite: !account && user.role !== 'STUDENT' ? await pendingInvite(id) : null,
+    },
     riskLevel: highestRisk(student.riskAlerts.map((a) => a.level)),
   };
 }

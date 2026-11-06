@@ -3,7 +3,8 @@ import { Navigate, RouterProvider, createBrowserRouter } from 'react-router';
 import { RequireAuth, RequireRole, homeFor } from './components/Layout';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { AdminRoutes, CourseRoutes, StaffRoutes, StudentRoutes } from './routes';
-import { LoginPage, RegisterPage } from './pages/AuthPages';
+import { ActivatePage, ChangePasswordPage } from './pages/AccountSetupPages';
+import { LoginPage } from './pages/AuthPages';
 import { AccountPage, NotFoundPage } from './pages/MiscPages';
 import { CoursesPage } from './pages/CoursesPage';
 import { ApiError } from './services/http';
@@ -31,7 +32,10 @@ function Home() {
 
 const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
-  { path: '/register', element: <RegisterPage /> },
+  { path: '/activate', element: <ActivatePage /> },
+  { path: '/register', element: <Navigate to="/activate" replace /> },
+  // Outside the app shell: the only screen for a user with a temporary password.
+  { path: '/change-password', element: <ChangePasswordPage /> },
   {
     element: <RequireAuth />,
     children: [

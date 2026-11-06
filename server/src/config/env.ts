@@ -5,37 +5,55 @@ import { z } from 'zod';
  * deployment fails fast with a readable message instead of failing later
  * on the first request that touches the missing value.
  */
-const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().int().positive().default(4000),
-  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
-  JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
-  JWT_EXPIRES_IN: z.string().default('8h'),
-  BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(15).default(12),
-  CORS_ORIGINS: z
-    .string()
-    .default('http://localhost:5173')
-    .transform((s) =>
-      s
-        .split(',')
-        .map((o) => o.trim())
-        .filter(Boolean),
-    ),
-  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
-  /**
-   * Failed credential attempts allowed per client IP and window. The defaults are
-   * the production values; local development shortens the window in .env.
-   */
-  AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(1000).default(20),
-  AUTH_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
-  /** Absolute or relative path to the built web app; when set, Express serves it (single-origin deploy). */
-  WEB_DIST_DIR: z.string().optional(),
-});
+const envSchema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    PORT: z.coerce.number().int().positive().default(4000),
+    DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+    JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
+    JWT_EXPIRES_IN: z.string().default('8h'),
+    BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(15).default(12),
+    CORS_ORIGINS: z
+      .string()
+      .default('http://localhost:5173')
+      .transform((s) =>
+        s
+          .split(',')
+          .map((o) => o.trim())
+          .filter(Boolean),
+      ),
+    LOG_LEVEL: z
+      .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
+      .default('info'),
+    /**
+     * Failed credential attempts allowed per client IP and window. The defaults are
+     * the production values; local development shortens the window in .env.
+     */
+    AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(1000).default(20),
+    AUTH_RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
+    /** Absolute or relative path to the built web app; when set, Express serves it (single-origin deploy). */
+    WEB_DIST_DIR: z.string().optional(),
+    /** Base URL of the web app, used to build student activation links. */
+    APP_URL: z.url().default('http://localhost:5173'),
+    /**
+     * How student activation invites reach the student.
+     *   disabled  (default) issuing an invite is refused with 503 and no token is created.
+     *   dev-link  local development only: the link is returned to the staff member who
+     *             created it, so the flow can be tested without an email service.
+     * A real channel (e.g. email) would be added here. dev-link is refused in production.
+     */
+    INVITE_DELIVERY: z.enum(['disabled', 'dev-link']).default('disabled'),
+  })
+  .refine((e) => !(e.NODE_ENV === 'production' && e.INVITE_DELIVERY === 'dev-link'), {
+    path: ['INVITE_DELIVERY'],
+    message: 'dev-link exposes activation links and is not allowed in production',
+  });
 
 export type Env = z.infer<typeof envSchema>;
 
-function loadEnv(): Env {
-  const parsed = envSchema.safeParse(process.env);
+/** Validates an environment (exported for tests); throws a readable error. */
+export function parseEnv(source: Record<string, string | undefined>): Env {
+  const parsed = envSchema.safeParse(source);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join('.')}: ${i.message}`)
@@ -45,6 +63,6 @@ function loadEnv(): Env {
   return parsed.data;
 }
 
-export const env = loadEnv();
+export const env = parseEnv(process.env);
 export const isProduction = env.NODE_ENV === 'production';
 export const isTest = env.NODE_ENV === 'test';

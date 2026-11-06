@@ -3,12 +3,14 @@ import jwt from 'jsonwebtoken';
 import { isProduction } from '../config/env.js';
 import { AUTH_COOKIE } from '../middleware/authenticate.js';
 import { currentUser } from '../middleware/authorize.js';
+import * as activationService from '../services/activation.service.js';
 import * as authService from '../services/auth.service.js';
 import { created, noContent, ok } from '../utils/http.js';
 import {
+  activateSchema,
+  activationTokenSchema,
   changePasswordSchema,
   loginSchema,
-  registerSchema,
 } from '../validators/auth.validators.js';
 
 /**
@@ -34,10 +36,15 @@ export async function login(req: Request, res: Response) {
   ok(res, { user });
 }
 
-export async function register(req: Request, res: Response) {
-  const { user, token } = await authService.registerStudent(registerSchema.parse(req.body));
-  setAuthCookie(res, token);
-  created(res, { user });
+/** Public: checks an activation link (token in the body, never in the URL or logs). */
+export async function verifyActivation(req: Request, res: Response) {
+  const { token } = activationTokenSchema.parse(req.body);
+  ok(res, await activationService.previewActivation(token));
+}
+
+/** Public: creates the student's login. No session is started; the student signs in next. */
+export async function activate(req: Request, res: Response) {
+  created(res, await activationService.activateAccount(activateSchema.parse(req.body)));
 }
 
 export function logout(_req: Request, res: Response) {
@@ -55,9 +62,10 @@ export function me(req: Request, res: Response) {
   ok(res, { user: authService.toSessionUser(currentUser(req)) });
 }
 
+/** Changes the password and ends every session, this one included: sign in again. */
 export async function changePassword(req: Request, res: Response) {
   const input = changePasswordSchema.parse(req.body);
-  const { user, token } = await authService.changePassword(currentUser(req).id, input);
-  setAuthCookie(res, token);
-  ok(res, { user });
+  await authService.changePassword(currentUser(req).id, input);
+  res.clearCookie(AUTH_COOKIE, baseCookie);
+  noContent(res);
 }

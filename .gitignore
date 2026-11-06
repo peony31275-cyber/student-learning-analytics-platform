@@ -16,8 +16,8 @@ coverage/
 server/src/generated/
 
 # local embedded postgres data
-server/.pgdata/
-server/.pgdata-test/
+# Local PostgreSQL data directories, wherever they end up
+.pgdata*/
 
 # logs / OS / editor
 *.log

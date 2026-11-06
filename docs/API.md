@@ -18,12 +18,13 @@ automatically. Non-browser clients can send the same JWT as `Authorization: Bear
 ```
 
 **Status codes:** `200` OK · `201` created · `204` no content · `400` validation or business-rule error ·
-`401` not authenticated / invalid session · `403` role not allowed · `404` not found _or outside
-your data scope_ · `409` conflict (duplicate, constraint) · `429` rate limited · `500` unexpected.
+`401` not authenticated / invalid session · `403` role not allowed or password change required · `404` not found _or outside
+your data scope_ · `409` conflict (duplicate, constraint) · `410` activation link no longer valid · `429` rate limited · `503` invites disabled · `500` unexpected.
 
-**Rate limits** (per client IP): `POST /auth/login`, `POST /auth/register` and
-`PATCH /auth/password` each allow 20 **failed** attempts per 15 minutes (successful requests are not
-counted); all of `/api/v1` allows 600 requests per minute. Responses carry `RateLimit-Policy` and
+**Rate limits** (per client IP): `POST /auth/login`, `POST /auth/activation/verify`,
+`POST /auth/activation` and `PATCH /auth/password` each allow 20 **failed** attempts per 15 minutes
+(successful requests are not counted); `POST /students/:id/activation-invite` allows 20 requests per
+15 minutes (every invite counts); all of `/api/v1` allows 600 requests per minute. Responses carry `RateLimit-Policy` and
 `RateLimit` headers (IETF draft 8); a blocked request gets `429`, a `Retry-After` header in seconds
 and `{ "error": { "code": "RATE_LIMITED", "message": "Too many failed attempts. Try again in 6 minutes." } }`.
 
@@ -34,40 +35,59 @@ the caller's data (see [ARCHITECTURE.md §4](ARCHITECTURE.md#4-authorization-two
 
 ## Auth
 
-| Method | Path               | Roles  | Body / query                                              | Notes                                                           |
-| ------ | ------------------ | ------ | --------------------------------------------------------- | --------------------------------------------------------------- |
-| POST   | `/auth/login`      | public | `{ email, password }`                                     | sets cookie; returns `{ user }`                                 |
-| POST   | `/auth/register`   | public | `{ email, password, studentNumber, firstName, lastName }` | activates a student account for an existing student record; 201 |
-| POST   | `/auth/logout`     | public | –                                                         | clears cookie; 204                                              |
-| POST   | `/auth/logout-all` | any    | –                                                         | revokes every token for the user; 204                           |
-| GET    | `/auth/me`         | any    | –                                                         | current user                                                    |
-| PATCH  | `/auth/password`   | any    | `{ currentPassword, newPassword }`                        | revokes other sessions, re-issues cookie                        |
+| Method | Path                      | Roles  | Body / query                       | Notes                                                                                                                   |
+| ------ | ------------------------- | ------ | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/auth/login`             | public | `{ email, password }`              | sets cookie; returns `{ user }` (`user.mustChangePassword: true` means the next screen must be the password change)     |
+| POST   | `/auth/activation/verify` | public | `{ token }`                        | checks an activation link; returns `{ firstName, lastName, email, school }`                                             |
+| POST   | `/auth/activation`        | public | `{ token, password }`              | creates the student's login from the invite and links it to the profile; 201 `{ email }`; no session is started         |
+| POST   | `/auth/logout`            | public | –                                  | clears cookie; 204                                                                                                      |
+| POST   | `/auth/logout-all`        | any    | –                                  | revokes every token for the user; 204                                                                                   |
+| GET    | `/auth/me`                | any    | –                                  | current user                                                                                                            |
+| PATCH  | `/auth/password`          | any    | `{ currentPassword, newPassword }` | sets the new password, clears `mustChangePassword` and **ends every session, including this one** (cookie cleared); 204 |
 
-Password policy: 8+ characters, at most 72 bytes, contains a letter and a number.
+Password policy: 8+ characters, at most 72 bytes, contains a letter and a number; a new password must
+differ from the current one. The old `POST /auth/register` (student number + email) was removed.
+
+**First sign-in with a temporary password.** Accounts created by an admin (`POST /users`) start with
+`mustChangePassword: true`. Until the password is changed, every endpoint except `GET /auth/me`,
+`PATCH /auth/password`, `POST /auth/logout` and `POST /auth/logout-all` answers
+`403 PASSWORD_CHANGE_REQUIRED`.
+
+**Activation link errors** (from both activation endpoints):
+
+| Status | Code                       | Meaning                                                            |
+| ------ | -------------------------- | ------------------------------------------------------------------ |
+| 400    | `ACTIVATION_TOKEN_INVALID` | unknown or malformed token                                         |
+| 410    | `ACTIVATION_TOKEN_EXPIRED` | older than 24 hours                                                |
+| 410    | `ACTIVATION_TOKEN_USED`    | already used                                                       |
+| 410    | `ACTIVATION_TOKEN_REVOKED` | replaced by a newer invite, or voided when an admin linked a login |
+| 409    | `ACCOUNT_EXISTS`           | the student already has an account (also when it is disabled)      |
+| 409    | `STUDENT_INACTIVE`         | the student record is not active                                   |
 
 ## School and users
 
-| Method | Path         | Roles | Notes                                                                                                                                               |
-| ------ | ------------ | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/school`    | A T S | school info and counts                                                                                                                              |
-| PATCH  | `/school`    | A     | `{ name?, timezone? }`                                                                                                                              |
-| GET    | `/users`     | A     | `role`, `isActive`, `search`, pagination                                                                                                            |
-| POST   | `/users`     | A     | `{ email, password, role, firstName, lastName, department?, studentId? }` (TEACHER creates a teacher profile; STUDENT requires `studentId` to link) |
-| GET    | `/users/:id` | A     |                                                                                                                                                     |
-| PATCH  | `/users/:id` | A     | `{ firstName?, lastName?, isActive?, department? }`; deactivating revokes sessions; admins cannot deactivate themselves                             |
+| Method | Path         | Roles | Notes                                                                                                                                                                                                                                               |
+| ------ | ------------ | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/school`    | A T S | school info and counts                                                                                                                                                                                                                              |
+| PATCH  | `/school`    | A     | `{ name?, timezone? }`                                                                                                                                                                                                                              |
+| GET    | `/users`     | A     | `role`, `isActive`, `search`, pagination                                                                                                                                                                                                            |
+| POST   | `/users`     | A     | `{ email, password, role, firstName, lastName, department?, studentId? }`: the password is temporary (`mustChangePassword: true`). TEACHER creates a teacher profile; STUDENT requires `studentId` to link and voids that student's pending invites |
+| GET    | `/users/:id` | A     |                                                                                                                                                                                                                                                     |
+| PATCH  | `/users/:id` | A     | `{ firstName?, lastName?, isActive?, department? }`; deactivating revokes sessions; admins cannot deactivate themselves                                                                                                                             |
 
 ## Students
 
-| Method | Path                       | Roles          | Notes                                                                                                                                                                   |
-| ------ | -------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/students`                | A T (scoped)   | `search`, `courseId`, `gradeLevel`, `status`, `riskLevel` (highest visible level), `sort` (`lastName`\|`studentNumber`\|`gradeLevel`\|`createdAt`), `order`, pagination |
-| GET    | `/students/directory`      | A T            | `search`, `limit` ≤ 50: minimal school-wide lookup for enrolling                                                                                                        |
-| POST   | `/students`                | A T            | `{ studentNumber, firstName, lastName, email?, gradeLevel, courseIds[] }`; teachers must include ≥1 of their courses; transactional                                     |
-| GET    | `/students/:id`            | A T S (scoped) | profile, visible enrollments, risk summary                                                                                                                              |
-| PATCH  | `/students/:id`            | A T (scoped)   | any profile field plus `status`                                                                                                                                         |
-| GET    | `/students/:id/grades`     | A T S (scoped) | `courseId?`; grades with percentages                                                                                                                                    |
-| GET    | `/students/:id/attendance` | A T S (scoped) | `courseId?`, `from?`, `to?` (YYYY-MM-DD)                                                                                                                                |
-| GET    | `/students/:id/risk`       | A T S (scoped) | current alerts with factors and suggestions                                                                                                                             |
+| Method | Path                              | Roles          | Notes                                                                                                                                                                                                                                                                                                             |
+| ------ | --------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/students`                       | A T (scoped)   | `search`, `courseId`, `gradeLevel`, `status`, `riskLevel` (highest visible level), `sort` (`lastName`\|`studentNumber`\|`gradeLevel`\|`createdAt`), `order`, pagination                                                                                                                                           |
+| GET    | `/students/directory`             | A T            | `search`, `limit` ≤ 50: minimal school-wide lookup for enrolling                                                                                                                                                                                                                                                  |
+| POST   | `/students`                       | A T            | `{ studentNumber, firstName, lastName, email?, gradeLevel, courseIds[] }`; teachers must include ≥1 of their courses; transactional                                                                                                                                                                               |
+| GET    | `/students/:id`                   | A T S (scoped) | profile, visible enrollments, risk summary, `account: { status: NONE \| ACTIVE \| DISABLED, pendingInvite }` (`pendingInvite` has `createdAt`/`expiresAt` only, never the token)                                                                                                                                  |
+| POST   | `/students/:id/activation-invite` | A T (scoped)   | creates a one-time invite (24 h) and revokes earlier ones. With `INVITE_DELIVERY=dev-link` (development only) returns `{ delivery, expiresAt, activationUrl }`; with `disabled` (the default) answers `503 INVITES_DISABLED` and creates nothing. `409 ACCOUNT_EXISTS` / `STUDENT_INACTIVE`, `400 EMAIL_REQUIRED` |
+| PATCH  | `/students/:id`                   | A T (scoped)   | any profile field plus `status`                                                                                                                                                                                                                                                                                   |
+| GET    | `/students/:id/grades`            | A T S (scoped) | `courseId?`; grades with percentages                                                                                                                                                                                                                                                                              |
+| GET    | `/students/:id/attendance`        | A T S (scoped) | `courseId?`, `from?`, `to?` (YYYY-MM-DD)                                                                                                                                                                                                                                                                          |
+| GET    | `/students/:id/risk`              | A T S (scoped) | current alerts with factors and suggestions                                                                                                                                                                                                                                                                       |
 
 ## Courses, enrollments, assessments, grades, attendance
 

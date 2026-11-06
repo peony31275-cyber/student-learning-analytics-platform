@@ -16,13 +16,21 @@ import {
   fmtDate,
   fmtPct,
 } from '../components/ui';
+import { InviteModal } from '../components/InviteModal';
 import { api, qk } from '../services/api';
 import type { StudentDetail, StudentProgress, StudentStatus } from '../types/api';
+
+const ACCOUNT_LABEL: Record<StudentDetail['account']['status'], string> = {
+  ACTIVE: 'account active',
+  DISABLED: 'account disabled',
+  NONE: 'no login yet',
+};
 
 export function StudentDetailPage() {
   const { id = '' } = useParams();
   const student = useQuery({ queryKey: qk.student(id), queryFn: () => api.students.get(id) });
   const [editing, setEditing] = useState(false);
+  const [inviting, setInviting] = useState(false);
 
   return (
     <QueryState query={student}>
@@ -33,12 +41,18 @@ export function StudentDetailPage() {
             subtitle={
               <>
                 #{s.studentNumber} · Grade {s.gradeLevel} · {s.status.toLowerCase()} ·{' '}
-                {s.hasAccount ? 'account active' : 'no login yet'}
+                {ACCOUNT_LABEL[s.account.status]}
+                {s.account.pendingInvite && ' · invite pending'}
               </>
             }
             actions={
               <>
                 <RiskBadge level={s.riskLevel} />
+                {s.account.status === 'NONE' && s.status === 'ACTIVE' && (
+                  <button className="btn" onClick={() => setInviting(true)}>
+                    Invite to activate
+                  </button>
+                )}
                 <button className="btn" onClick={() => setEditing(true)}>
                   Edit
                 </button>
@@ -47,6 +61,7 @@ export function StudentDetailPage() {
           />
           <StudentInsights studentId={id} />
           {editing && <EditStudentModal student={s} onClose={() => setEditing(false)} />}
+          {inviting && <InviteModal student={s} onClose={() => setInviting(false)} />}
         </>
       )}
     </QueryState>

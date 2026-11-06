@@ -1,20 +1,23 @@
 import { useMutation } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useSignOut } from '../components/Layout';
 import { Card, EmptyState, Field, FormError, PageHeader } from '../components/ui';
-import { useAuth } from '../hooks/useAuth';
+import { type SessionEnd, useAuth } from '../hooks/useAuth';
 import { api } from '../services/api';
 
 export function AccountPage() {
-  const { user, setUser } = useAuth();
+  const { user, endSession } = useAuth();
   const signOut = useSignOut();
+  const navigate = useNavigate();
   const [form, setForm] = useState({ currentPassword: '', newPassword: '' });
   const change = useMutation({
     mutationFn: () => api.auth.changePassword(form.currentPassword, form.newPassword),
     onSuccess: () => {
-      setForm({ currentPassword: '', newPassword: '' });
-      if (user) setUser(user);
+      // The server ended every session, this one included: sign in again.
+      const end: SessionEnd = { notice: 'password-changed', email: user?.email };
+      endSession(end);
+      navigate('/login', { replace: true, state: end });
     },
   });
   return (
@@ -26,7 +29,7 @@ export function AccountPage() {
       <div className="grid grid-2">
         <Card
           title="Change password"
-          subtitle="Changing your password signs out all your other sessions."
+          subtitle="Changing your password signs you out everywhere, including here; then you sign in with the new one."
         >
           <form
             className="stack"
@@ -36,7 +39,6 @@ export function AccountPage() {
             }}
           >
             <FormError error={change.error} />
-            {change.isSuccess && <div className="alert-box success">Password updated.</div>}
             <Field label="Current password" htmlFor="cp">
               <input
                 id="cp"

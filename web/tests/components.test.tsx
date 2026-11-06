@@ -53,6 +53,7 @@ const teacher: SessionUser = {
   schoolId: 's1',
   teacherId: 't1',
   studentId: null,
+  mustChangePassword: false,
 };
 
 afterEach(() => vi.unstubAllGlobals());

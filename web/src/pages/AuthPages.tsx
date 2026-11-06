@@ -2,8 +2,19 @@ import { type FormEvent, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router';
 import { homeFor } from '../components/Layout';
 import { Field, FormError } from '../components/ui';
-import { useAuth } from '../hooks/useAuth';
-import { api } from '../services/api';
+import { type SessionEnd, useAuth } from '../hooks/useAuth';
+import type { SessionUser } from '../types/api';
+
+/** Where a signed-in user belongs; a temporary password must be replaced first. */
+export const startPageFor = (u: SessionUser) =>
+  u.mustChangePassword ? '/change-password' : homeFor(u.role);
+
+/** Passed to /login: where to return to, or a notice after a flow that ends with signing in. */
+export type LoginState = SessionEnd & { from?: string };
+const NOTICES = {
+  activated: 'Your account is active. Sign in with your school email and the password you chose.',
+  'password-changed': 'Your password was changed. Sign in again with the new password.',
+};
 
 const DEMO = [
   { label: 'Admin', email: 'admin@riverside.edu' },
@@ -16,12 +27,19 @@ export function LoginPage() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [email, setEmail] = useState('');
+  const state = (location.state as LoginState | null) ?? {};
+  const [email, setEmail] = useState(state.email ?? '');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [pending, setPending] = useState(false);
 
-  if (user) return <Navigate to={homeFor(user.role)} replace />;
+  // One destination for both redirects below. The router applies navigations as
+  // transitions, so this page can re-render with the new user before submit()'s
+  // navigation lands; both then point to the same place.
+  const from = state.from && state.from !== '/login' ? state.from : null;
+  const destination = (u: SessionUser) => (u.mustChangePassword || !from ? startPageFor(u) : from);
+
+  if (user) return <Navigate to={destination(user)} replace />;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -29,8 +47,7 @@ export function LoginPage() {
     setError(null);
     try {
       const u = await login(email, password);
-      const from = (location.state as { from?: string } | null)?.from;
-      navigate(from && from !== '/login' ? from : homeFor(u.role), { replace: true });
+      navigate(destination(u), { replace: true });
     } catch (err) {
       setError(err);
     } finally {
@@ -51,6 +68,11 @@ export function LoginPage() {
               Track performance and catch students who need support early.
             </p>
           </div>
+          {state.notice && !error && (
+            <div className="alert-box success" role="status">
+              {NOTICES[state.notice]}
+            </div>
+          )}
           <FormError error={error} />
           <Field label="Email" htmlFor="email">
             <input
@@ -78,7 +100,8 @@ export function LoginPage() {
             {pending ? 'Signing in…' : 'Sign in'}
           </button>
           <p className="subtle" style={{ margin: 0 }}>
-            Student with a school record? <Link to="/register">Activate your account</Link>
+            Got an activation link from your school?{' '}
+            <Link to="/activate">Activate your account</Link>
           </p>
         </form>
         <div className="card">
@@ -103,110 +126,6 @@ export function LoginPage() {
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-export function RegisterPage() {
-  const { user, setUser } = useAuth();
-  const navigate = useNavigate();
-  const [form, setForm] = useState({
-    studentNumber: '',
-    email: '',
-    firstName: '',
-    lastName: '',
-    password: '',
-  });
-  const [error, setError] = useState<unknown>(null);
-  const [pending, setPending] = useState(false);
-  if (user) return <Navigate to={homeFor(user.role)} replace />;
-
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm({ ...form, [k]: e.target.value });
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setPending(true);
-    setError(null);
-    try {
-      const u = await api.auth.register(form);
-      setUser(u);
-      navigate('/me', { replace: true });
-    } catch (err) {
-      setError(err);
-    } finally {
-      setPending(false);
-    }
-  }
-
-  return (
-    <div className="auth-page">
-      <form className="card auth-card stack" onSubmit={submit} noValidate>
-        <div>
-          <h1>Activate student account</h1>
-          <p className="muted" style={{ margin: '4px 0 0' }}>
-            Use the student number and email your school has on file.
-          </p>
-        </div>
-        <FormError error={error} />
-        <Field label="Student number" htmlFor="sn">
-          <input
-            id="sn"
-            className="input"
-            value={form.studentNumber}
-            onChange={set('studentNumber')}
-            required
-          />
-        </Field>
-        <Field label="School email" htmlFor="em">
-          <input
-            id="em"
-            className="input"
-            type="email"
-            autoComplete="email"
-            value={form.email}
-            onChange={set('email')}
-            required
-          />
-        </Field>
-        <div className="form-grid">
-          <Field label="First name" htmlFor="fn">
-            <input
-              id="fn"
-              className="input"
-              value={form.firstName}
-              onChange={set('firstName')}
-              required
-            />
-          </Field>
-          <Field label="Last name" htmlFor="ln">
-            <input
-              id="ln"
-              className="input"
-              value={form.lastName}
-              onChange={set('lastName')}
-              required
-            />
-          </Field>
-        </div>
-        <Field label="Password (8+ characters, a letter and a number)" htmlFor="pw">
-          <input
-            id="pw"
-            className="input"
-            type="password"
-            autoComplete="new-password"
-            value={form.password}
-            onChange={set('password')}
-            required
-          />
-        </Field>
-        <button className="btn btn-primary" disabled={pending}>
-          {pending ? 'Creating…' : 'Create account'}
-        </button>
-        <p className="subtle" style={{ margin: 0 }}>
-          Already have an account? <Link to="/login">Sign in</Link>
-        </p>
-      </form>
     </div>
   );
 }

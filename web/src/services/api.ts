@@ -12,19 +12,15 @@ export const api = {
       data(http.post<{ data: { user: T.SessionUser } }>('/auth/login', { email, password })).then(
         (d) => d.user,
       ),
-    register: (body: {
-      email: string;
-      password: string;
-      studentNumber: string;
-      firstName: string;
-      lastName: string;
-    }) =>
-      data(http.post<{ data: { user: T.SessionUser } }>('/auth/register', body)).then(
-        (d) => d.user,
-      ),
+    // The activation token travels in a POST body, never in a URL the server logs.
+    verifyActivation: (token: string) =>
+      data(http.post<{ data: T.ActivationPreview }>('/auth/activation/verify', { token })),
+    activate: (token: string, password: string) =>
+      data(http.post<{ data: { email: string } }>('/auth/activation', { token, password })),
     logout: () => http.post<void>('/auth/logout'),
+    /** Ends every session, this one included: sign in again afterwards. */
     changePassword: (currentPassword: string, newPassword: string) =>
-      http.patch<unknown>('/auth/password', { currentPassword, newPassword }),
+      http.patch<void>('/auth/password', { currentPassword, newPassword }),
   },
   school: {
     get: () => data(http.get<{ data: T.School }>('/school')),
@@ -43,6 +39,8 @@ export const api = {
     directory: (search: string) =>
       data(http.get<{ data: T.DirectoryStudent[] }>('/students/directory', { search })),
     get: (id: string) => data(http.get<{ data: T.StudentDetail }>(`/students/${id}`)),
+    createInvite: (id: string) =>
+      data(http.post<{ data: T.ActivationInvite }>(`/students/${id}/activation-invite`)),
     create: (body: Record<string, unknown>) =>
       data(http.post<{ data: { id: string } }>('/students', body)),
     update: (id: string, body: Record<string, unknown>) =>

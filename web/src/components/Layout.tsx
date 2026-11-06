@@ -20,20 +20,24 @@ export const homeFor = (role: Role) => (role === 'STUDENT' ? '/me' : '/dashboard
 /**
  * Explicit sign-out: end the session, then go to /login *without* remembering
  * the current page (unlike an expired session), so the next person signing in
- * on this browser is not sent to the previous user's screen.
+ * on this browser is not sent to the previous user's screen. The guards below
+ * redirect with the same state (see `sessionEnd` in useAuth).
  */
 export function useSignOut() {
   const { logout } = useAuth();
   const navigate = useNavigate();
   return async () => {
     await logout();
-    navigate('/login', { replace: true });
+    navigate('/login', { replace: true, state: {} });
   };
 }
 
-/** Route guard: unauthenticated users go to /login (remembering where they were headed). */
+/**
+ * Route guard: unauthenticated users go to /login. After an expired session it
+ * remembers where they were headed; after a deliberate sign-out it does not.
+ */
 export function RequireAuth() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, sessionEnd } = useAuth();
   const location = useLocation();
   if (isLoading)
     return (
@@ -41,7 +45,10 @@ export function RequireAuth() {
         <Loading />
       </div>
     );
-  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!user)
+    return <Navigate to="/login" replace state={sessionEnd ?? { from: location.pathname }} />;
+  // A temporary password must be replaced first (the API also refuses everything else).
+  if (user.mustChangePassword) return <Navigate to="/change-password" replace />;
   return <AppShell />;
 }
 
@@ -50,11 +57,17 @@ export function RequireAuth() {
  * enforcement is the API's RBAC, which rejects the request regardless.
  */
 export function RequireRole({ roles }: { roles: Role[] }) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, sessionEnd } = useAuth();
   // Wait for the session check; redirecting now would bounce a logged-in user to /login.
   if (isLoading) return <Loading />;
   if (!user || !roles.includes(user.role))
-    return <Navigate to={user ? homeFor(user.role) : '/login'} replace />;
+    return (
+      <Navigate
+        to={user ? homeFor(user.role) : '/login'}
+        replace
+        state={user ? undefined : sessionEnd}
+      />
+    );
   return <Outlet />;
 }
 

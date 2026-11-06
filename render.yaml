@@ -20,6 +20,10 @@ services:
         value: 8h
       - key: BCRYPT_ROUNDS
         value: 12
+      # No email service yet, so student activation invites stay off in production.
+      # (The development-only "dev-link" mode is refused when NODE_ENV=production.)
+      - key: INVITE_DELIVERY
+        value: disabled
       - key: CORS_ORIGINS
         sync: false
       - key: DATABASE_URL

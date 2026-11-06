@@ -96,24 +96,29 @@ model School {
 // ───────────────────────────── Identity ─────────────────────────────
 
 model User {
-  id           String    @id @default(uuid()) @db.Uuid
-  schoolId     String    @db.Uuid
-  email        String    @unique
-  passwordHash String
-  role         Role
-  firstName    String
-  lastName     String
-  isActive     Boolean   @default(true)
+  id                 String    @id @default(uuid()) @db.Uuid
+  schoolId           String    @db.Uuid
+  email              String    @unique
+  passwordHash       String
+  role               Role
+  firstName          String
+  lastName           String
+  isActive           Boolean   @default(true)
   /// Incremented to invalidate every JWT issued before (logout-all, password
   /// change, deactivation). Checked on every authenticated request.
-  tokenVersion Int       @default(0)
-  lastLoginAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  tokenVersion       Int       @default(0)
+  /// Set when an admin creates the account with a temporary password. Until the
+  /// user picks their own password, the API only allows /auth/me, /auth/password
+  /// and logout (403 PASSWORD_CHANGE_REQUIRED everywhere else).
+  mustChangePassword Boolean   @default(false)
+  lastLoginAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  school         School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  teacherProfile TeacherProfile?
-  studentProfile StudentProfile?
+  school                 School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  teacherProfile         TeacherProfile?
+  studentProfile         StudentProfile?
+  activationTokensIssued ActivationToken[]
 
   @@index([schoolId, role])
   @@map("users")
@@ -145,12 +150,13 @@ model StudentProfile {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  school      School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
-  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
-  enrollments Enrollment[]
-  grades      Grade[]
-  attendance  Attendance[]
-  riskAlerts  RiskAlert[]
+  school           School            @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  user             User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  enrollments      Enrollment[]
+  grades           Grade[]
+  attendance       Attendance[]
+  riskAlerts       RiskAlert[]
+  activationTokens ActivationToken[]
 
   @@unique([schoolId, studentNumber])
   @@index([schoolId, lastName, firstName])
@@ -307,4 +313,25 @@ model RiskAlert {
   @@index([courseId, level])
   @@index([level, status])
   @@map("risk_alerts")
+}
+
+/// One-time invite to activate the login for a student profile. Only the
+/// SHA-256 hash of the token is stored; the token itself exists only in the
+/// link delivered to the student. A token works while it is unused, not
+/// revoked and not expired. Issuing a new invite revokes the earlier ones.
+model ActivationToken {
+  id          String    @id @default(uuid()) @db.Uuid
+  studentId   String    @db.Uuid
+  tokenHash   String    @unique @db.Char(64)
+  expiresAt   DateTime
+  usedAt      DateTime?
+  revokedAt   DateTime?
+  createdById String?   @db.Uuid
+  createdAt   DateTime  @default(now())
+
+  student   StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  createdBy User?          @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([studentId, createdAt])
+  @@map("activation_tokens")
 }

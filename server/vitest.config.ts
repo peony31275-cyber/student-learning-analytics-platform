@@ -19,6 +19,9 @@ export default defineConfig({
       JWT_EXPIRES_IN: '1h',
       BCRYPT_ROUNDS: '4',
       LOG_LEVEL: 'silent',
+      // Tests read the activation link from the API response (refused in production).
+      INVITE_DELIVERY: 'dev-link',
+      APP_URL: 'http://localhost:5173',
     },
     coverage: {
       provider: 'v8',

@@ -20,18 +20,33 @@ export interface CredentialRateLimit {
  * - Fixed window: the count resets `windowMs` after the window's first attempt.
  *   Blocked requests do not extend the block.
  */
-export function credentialLimiter({ limit, windowMs }: CredentialRateLimit) {
+export function credentialLimiter(limits: CredentialRateLimit) {
+  return buildLimiter(limits, { countSuccessful: false, what: 'failed attempts' });
+}
+
+/**
+ * Same per-IP window, but every request counts. For actions whose success is
+ * the cost, such as issuing activation invites.
+ */
+export function actionLimiter(limits: CredentialRateLimit) {
+  return buildLimiter(limits, { countSuccessful: true, what: 'requests' });
+}
+
+function buildLimiter(
+  { limit, windowMs }: CredentialRateLimit,
+  { countSuccessful, what }: { countSuccessful: boolean; what: string },
+) {
   return rateLimit({
     windowMs,
     limit,
-    skipSuccessfulRequests: true,
+    skipSuccessfulRequests: !countSuccessful,
     // RateLimit-Policy and RateLimit on every response, Retry-After when blocked.
     standardHeaders: 'draft-8',
     legacyHeaders: false,
     message: (req: Request) => ({
       error: {
         code: 'RATE_LIMITED',
-        message: `Too many failed attempts. Try again in ${waitTime(req, windowMs)}.`,
+        message: `Too many ${what}. Try again in ${waitTime(req, windowMs)}.`,
       },
     }),
   });

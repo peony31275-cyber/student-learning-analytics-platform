@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { email, password, personName } from './common.js';
+import { email, password } from './common.js';
 
 export const loginSchema = z.object({
   email,
@@ -7,24 +7,24 @@ export const loginSchema = z.object({
 });
 
 /**
- * Student self-service account activation. A student can only register if
- * school staff already created a matching profile (same student number and
- * email). The role is never accepted from the client, which prevents
- * privilege escalation through the public registration endpoint.
+ * Student activation through a one-time invite link. The token's format is
+ * checked by the service, so a malformed token gets the same answer as an
+ * unknown one. Email, name and role come from the student profile, never from
+ * the client.
  */
-export const registerSchema = z.object({
-  email,
-  password,
-  studentNumber: z.string().trim().min(1).max(40),
-  firstName: personName,
-  lastName: personName,
-});
+export const activationTokenSchema = z.object({ token: z.string().max(200) });
+export const activateSchema = activationTokenSchema.extend({ password });
 
-export const changePasswordSchema = z.object({
-  currentPassword: z.string().min(1),
-  newPassword: password,
-});
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Current password is required').max(200),
+    newPassword: password,
+  })
+  .refine((p) => p.newPassword !== p.currentPassword, {
+    path: ['newPassword'],
+    message: 'New password must be different from the current password',
+  });
 
 export type LoginInput = z.infer<typeof loginSchema>;
-export type RegisterInput = z.infer<typeof registerSchema>;
+export type ActivateInput = z.infer<typeof activateSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;

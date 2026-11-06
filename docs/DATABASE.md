@@ -17,7 +17,8 @@ School 1───* User 1───0..1 TeacherProfile 1───* Course
                     ├──* Grade *──── Assessment *───────┘
                     │      └──* GradeHistory
                     ├──* Attendance *───────────────────── Course
-                    └──* RiskAlert  *───────────────────── Course
+                    ├──* RiskAlert  *───────────────────── Course
+                    └──* ActivationToken *──────────────── User (createdBy)
 ```
 
 | Relationship                            | Type       | Notes                                                                                                                                                  |
@@ -30,6 +31,7 @@ School 1───* User 1───0..1 TeacherProfile 1───* Course
 | Grade → GradeHistory                    | 1 : N      | append-only audit of every change (old/new score and status, who, why)                                                                                 |
 | StudentProfile × Course → Attendance    | N : 1 each | one row per student per class meeting                                                                                                                  |
 | StudentProfile × Course → RiskAlert     | N : 1 each | the current risk evaluation for that enrollment                                                                                                        |
+| StudentProfile → ActivationToken        | 1 : N      | one-time activation invites; `Cascade` with the profile; `createdBy` → User (`SetNull`). Only the token's SHA-256 hash is stored                       |
 
 ## Constraints that encode business rules
 
@@ -43,6 +45,8 @@ School 1───* User 1───0..1 TeacherProfile 1───* Course
 | `grades (assessmentId, studentId) UNIQUE`            | exactly one grade per student per assessment                                              |
 | `attendance (studentId, courseId, date) UNIQUE`      | one mark per student per class day, which makes re-submitting a day idempotent (`upsert`) |
 | `risk_alerts (studentId, courseId) UNIQUE`           | one current alert per enrollment; recalculation upserts                                   |
+| `activation_tokens.tokenHash UNIQUE`                 | an activation link maps to exactly one invite, found by hash                              |
+| `users.mustChangePassword` (default `false`)         | admin-created accounts must replace their temporary password; existing rows stay `false`  |
 | Enums (`Role`, `GradeStatus`, `AttendanceStatus`, …) | invalid states cannot be stored                                                           |
 | `NUMERIC(7,2)` for scores                            | exact decimal arithmetic for grades (no floating-point drift)                             |
 
@@ -54,22 +58,23 @@ the error handler maps Prisma's `P2002` to **409 Conflict**.
 
 Each index exists for a specific, frequent query:
 
-| Index                                               | Serves                                                                |
-| --------------------------------------------------- | --------------------------------------------------------------------- |
-| `users (schoolId, role)`                            | admin user list filtered by role; counting teachers                   |
-| `student_profiles (schoolId, lastName, firstName)`  | the default student list sort, scoped to a school                     |
-| `student_profiles (schoolId, email)`                | account activation lookup                                             |
-| `courses (teacherId)`                               | every teacher-scoped query (`courseScope`) starts here                |
-| `enrollments (courseId, status)`                    | rosters, "active students in course", every analytics join            |
-| `enrollments (studentId, courseId)` _(unique)_      | "is this student in this course?" and the student → courses direction |
-| `assessments (courseId, dueDate)`                   | a course's assessments in date order; weekly trend bucketing          |
-| `grades (assessmentId, studentId)` _(unique)_       | gradebook for one assessment                                          |
-| `grades (studentId)`                                | a student's grade history across courses                              |
-| `attendance (courseId, date)`                       | taking attendance for one class meeting; weekly attendance charts     |
-| `attendance (studentId, courseId, date)` _(unique)_ | a student's attendance in a course                                    |
-| `grade_history (gradeId, changedAt)`                | history of one grade, newest first                                    |
-| `risk_alerts (courseId, level)`                     | risk distribution per course, "medium and high in my courses"         |
-| `risk_alerts (level, status)`                       | the alerts inbox (open alerts by level)                               |
+| Index                                               | Serves                                                                    |
+| --------------------------------------------------- | ------------------------------------------------------------------------- |
+| `users (schoolId, role)`                            | admin user list filtered by role; counting teachers                       |
+| `student_profiles (schoolId, lastName, firstName)`  | the default student list sort, scoped to a school                         |
+| `student_profiles (schoolId, email)`                | account activation lookup                                                 |
+| `courses (teacherId)`                               | every teacher-scoped query (`courseScope`) starts here                    |
+| `enrollments (courseId, status)`                    | rosters, "active students in course", every analytics join                |
+| `enrollments (studentId, courseId)` _(unique)_      | "is this student in this course?" and the student → courses direction     |
+| `assessments (courseId, dueDate)`                   | a course's assessments in date order; weekly trend bucketing              |
+| `grades (assessmentId, studentId)` _(unique)_       | gradebook for one assessment                                              |
+| `grades (studentId)`                                | a student's grade history across courses                                  |
+| `attendance (courseId, date)`                       | taking attendance for one class meeting; weekly attendance charts         |
+| `attendance (studentId, courseId, date)` _(unique)_ | a student's attendance in a course                                        |
+| `grade_history (gradeId, changedAt)`                | history of one grade, newest first                                        |
+| `risk_alerts (courseId, level)`                     | risk distribution per course, "medium and high in my courses"             |
+| `risk_alerts (level, status)`                       | the alerts inbox (open alerts by level)                                   |
+| `activation_tokens (studentId, createdAt)`          | latest pending invite for a student; revoking a student's earlier invites |
 
 Composite indexes are ordered with the equality column first (e.g. `courseId`) and the
 range/sort column second (`dueDate`, `date`), which matches how the queries filter and sort.
@@ -78,19 +83,27 @@ there is no separate index on `enrollments.studentId`.
 
 ## Transactions
 
-| Operation                                         | Why it is a transaction                                                                                                  |
-| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| Create student + initial enrollments              | a teacher must never end up with a profile they can't see                                                                |
-| Student registration (create user + link profile) | a conditional `updateMany … WHERE userId IS NULL` detects a concurrent activation; if so, the user insert is rolled back |
-| Admin creates a STUDENT login                     | same linking guarantee                                                                                                   |
-| Bulk grade entry                                  | every grade and its history row is written, or none                                                                      |
-| Bulk attendance                                   | the whole class meeting is recorded atomically                                                                           |
-| Risk alert persistence                            | all alerts of a recalculation batch are written together                                                                 |
+| Operation                                         | Why it is a transaction                                                                                                                                  |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Create student + initial enrollments              | a teacher must never end up with a profile they can't see                                                                                                |
+| Student registration (create user + link profile) | a conditional `updateMany … WHERE userId IS NULL` detects a concurrent activation; if so, the user insert is rolled back                                 |
+| Admin creates a STUDENT login                     | same linking guarantee                                                                                                                                   |
+| Bulk grade entry                                  | every grade and its history row is written, or none                                                                                                      |
+| Bulk attendance                                   | the whole class meeting is recorded atomically                                                                                                           |
+| Risk alert persistence                            | all alerts of a recalculation batch are written together                                                                                                 |
+| Issuing an activation invite                      | lock the profile row, re-check it has no login, revoke earlier invites, insert the new one                                                               |
+| Student activation                                | lock the profile row, claim the token (conditional `UPDATE`), create the user, link the profile, revoke other invites; any failure rolls everything back |
+
+Every operation that changes a student's login or invites takes the **profile row lock first**,
+then touches `activation_tokens`. With one lock order, concurrent requests for the same student
+queue instead of deadlocking (an earlier version without it hit PostgreSQL `40P01` in a test).
 
 ## Migrations and seed
 
 - `npm run db:migrate -w server`: `prisma migrate dev` (development, creates migrations)
 - `npm run db:deploy -w server`: `prisma migrate deploy` (production, applies pending migrations only; run by `npm start`)
+- Migrations so far: `init`, and `account_security` (adds `users.mustChangePassword` and the
+  `activation_tokens` table; additive only, no existing data is changed).
 - `npm run db:seed -w server`: truncates and recreates deterministic demo data with a seeded
   PRNG (1 school, 9 users, 60 students, 6 courses, 180 enrollments, 48 assessments, 1,440 grades,
   3,240 attendance records), then runs the risk engine. Running it twice gives identical data.

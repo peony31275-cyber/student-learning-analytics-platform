@@ -38,6 +38,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
       lastName: true,
       isActive: true,
       tokenVersion: true,
+      mustChangePassword: true,
       teacherProfile: { select: { id: true } },
       studentProfile: { select: { id: true } },
     },
@@ -55,6 +56,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
     lastName: user.lastName,
     teacherId: user.teacherProfile?.id ?? null,
     studentId: user.studentProfile?.id ?? null,
+    mustChangePassword: user.mustChangePassword,
   };
   next();
 }

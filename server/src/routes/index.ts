@@ -1,10 +1,10 @@
 /**
  * API route map (everything except /auth, which app.ts mounts first).
- * Authentication is applied once for all of these routes; each route then
- * declares which roles may call it (coarse RBAC). Row-level rules are enforced
- * again inside the services.
+ * Authentication and the first-login password check run once for all of these
+ * routes; each route then declares which roles may call it (coarse RBAC).
+ * Row-level rules are enforced again inside the services.
  */
-import { Router } from 'express';
+import { type RequestHandler, Router } from 'express';
 import {
   assessmentsController as assessments,
   coursesController as courses,
@@ -19,71 +19,89 @@ import {
   riskController as risk,
 } from '../controllers/insights.controllers.js';
 import { authenticate } from '../middleware/authenticate.js';
-import { requireRole } from '../middleware/authorize.js';
+import { requirePasswordChanged, requireRole } from '../middleware/authorize.js';
+import { type CredentialRateLimit, actionLimiter } from '../middleware/rate-limit.js';
 
 const ADMIN = requireRole('ADMIN');
 const STAFF = requireRole('ADMIN', 'TEACHER');
 const ANY = requireRole('ADMIN', 'TEACHER', 'STUDENT');
+const noLimit: RequestHandler = (_req, _res, next) => next();
 
-export const apiRouter = Router();
+/** `inviteRateLimit: null` turns the invite limiter off (the shared test app). */
+export function createApiRouter({
+  inviteRateLimit,
+}: {
+  inviteRateLimit: CredentialRateLimit | null;
+}) {
+  const apiRouter = Router();
 
-apiRouter.use(authenticate);
+  apiRouter.use(authenticate, requirePasswordChanged);
 
-// School & users (admin)
-apiRouter.get('/school', ANY, school.get);
-apiRouter.patch('/school', ADMIN, school.update);
-apiRouter.get('/users', ADMIN, users.list);
-apiRouter.post('/users', ADMIN, users.create);
-apiRouter.get('/users/:id', ADMIN, users.get);
-apiRouter.patch('/users/:id', ADMIN, users.update);
+  // School & users (admin)
+  apiRouter.get('/school', ANY, school.get);
+  apiRouter.patch('/school', ADMIN, school.update);
+  apiRouter.get('/users', ADMIN, users.list);
+  apiRouter.post('/users', ADMIN, users.create);
+  apiRouter.get('/users/:id', ADMIN, users.get);
+  apiRouter.patch('/users/:id', ADMIN, users.update);
 
-// Students
-apiRouter.get('/students', STAFF, students.list);
-apiRouter.get('/students/directory', STAFF, students.directory);
-apiRouter.post('/students', STAFF, students.create);
-apiRouter.get('/students/:id', ANY, students.get);
-apiRouter.patch('/students/:id', STAFF, students.update);
-apiRouter.get('/students/:id/grades', ANY, students.grades);
-apiRouter.get('/students/:id/attendance', ANY, students.attendance);
+  // Students
+  apiRouter.get('/students', STAFF, students.list);
+  apiRouter.get('/students/directory', STAFF, students.directory);
+  apiRouter.post('/students', STAFF, students.create);
+  apiRouter.get('/students/:id', ANY, students.get);
+  apiRouter.patch('/students/:id', STAFF, students.update);
+  apiRouter.get('/students/:id/grades', ANY, students.grades);
+  apiRouter.get('/students/:id/attendance', ANY, students.attendance);
+  // Teachers only for students in their own courses (checked in the service).
+  apiRouter.post(
+    '/students/:id/activation-invite',
+    STAFF,
+    inviteRateLimit ? actionLimiter(inviteRateLimit) : noLimit,
+    students.createInvite,
+  );
 
-// Courses (+ nested collections)
-apiRouter.get('/courses', ANY, courses.list);
-apiRouter.post('/courses', STAFF, courses.create);
-apiRouter.get('/courses/:id', ANY, courses.get);
-apiRouter.patch('/courses/:id', STAFF, courses.update);
-apiRouter.delete('/courses/:id', ADMIN, courses.remove);
-apiRouter.get('/courses/:id/students', STAFF, courses.roster);
-apiRouter.get('/courses/:id/assessments', ANY, courses.listAssessments);
-apiRouter.post('/courses/:id/assessments', STAFF, courses.createAssessment);
-apiRouter.get('/courses/:id/attendance', STAFF, courses.getAttendance);
-apiRouter.put('/courses/:id/attendance', STAFF, courses.recordAttendance);
-apiRouter.get('/courses/:id/attendance/sessions', STAFF, courses.attendanceSessions);
+  // Courses (+ nested collections)
+  apiRouter.get('/courses', ANY, courses.list);
+  apiRouter.post('/courses', STAFF, courses.create);
+  apiRouter.get('/courses/:id', ANY, courses.get);
+  apiRouter.patch('/courses/:id', STAFF, courses.update);
+  apiRouter.delete('/courses/:id', ADMIN, courses.remove);
+  apiRouter.get('/courses/:id/students', STAFF, courses.roster);
+  apiRouter.get('/courses/:id/assessments', ANY, courses.listAssessments);
+  apiRouter.post('/courses/:id/assessments', STAFF, courses.createAssessment);
+  apiRouter.get('/courses/:id/attendance', STAFF, courses.getAttendance);
+  apiRouter.put('/courses/:id/attendance', STAFF, courses.recordAttendance);
+  apiRouter.get('/courses/:id/attendance/sessions', STAFF, courses.attendanceSessions);
 
-// Enrollments
-apiRouter.get('/enrollments', STAFF, enrollments.list);
-apiRouter.post('/enrollments', STAFF, enrollments.create);
-apiRouter.patch('/enrollments/:id', STAFF, enrollments.update);
+  // Enrollments
+  apiRouter.get('/enrollments', STAFF, enrollments.list);
+  apiRouter.post('/enrollments', STAFF, enrollments.create);
+  apiRouter.patch('/enrollments/:id', STAFF, enrollments.update);
 
-// Assessments & grades
-apiRouter.patch('/assessments/:id', STAFF, assessments.update);
-apiRouter.delete('/assessments/:id', STAFF, assessments.remove);
-apiRouter.get('/assessments/:id/grades', STAFF, assessments.gradebook);
-apiRouter.put('/assessments/:id/grades', STAFF, assessments.upsertGrades);
-apiRouter.get('/grades/:id/history', STAFF, grades.history);
+  // Assessments & grades
+  apiRouter.patch('/assessments/:id', STAFF, assessments.update);
+  apiRouter.delete('/assessments/:id', STAFF, assessments.remove);
+  apiRouter.get('/assessments/:id/grades', STAFF, assessments.gradebook);
+  apiRouter.put('/assessments/:id/grades', STAFF, assessments.upsertGrades);
+  apiRouter.get('/grades/:id/history', STAFF, grades.history);
 
-// Analytics
-apiRouter.get('/analytics/overview', STAFF, analytics.overview);
-apiRouter.get('/analytics/score-trends', STAFF, analytics.scoreTrends);
-apiRouter.get('/analytics/course-comparison', STAFF, analytics.courseComparison);
-apiRouter.get('/analytics/attendance', STAFF, analytics.attendance);
-apiRouter.get('/analytics/risk-distribution', STAFF, analytics.riskDistribution);
-apiRouter.get('/analytics/students/:id/progress', ANY, analytics.studentProgress);
+  // Analytics
+  apiRouter.get('/analytics/overview', STAFF, analytics.overview);
+  apiRouter.get('/analytics/score-trends', STAFF, analytics.scoreTrends);
+  apiRouter.get('/analytics/course-comparison', STAFF, analytics.courseComparison);
+  apiRouter.get('/analytics/attendance', STAFF, analytics.attendance);
+  apiRouter.get('/analytics/risk-distribution', STAFF, analytics.riskDistribution);
+  apiRouter.get('/analytics/students/:id/progress', ANY, analytics.studentProgress);
 
-// Early-warning engine
-apiRouter.get('/risk-alerts', STAFF, risk.list);
-apiRouter.post('/risk-alerts/recalculate', STAFF, risk.recalculate);
-apiRouter.get('/risk-alerts/:id', STAFF, risk.get);
-apiRouter.patch('/risk-alerts/:id', STAFF, risk.update);
-apiRouter.get('/students/:id/risk', ANY, risk.forStudent);
-apiRouter.get('/settings/risk', STAFF, risk.getConfig);
-apiRouter.put('/settings/risk', ADMIN, risk.updateConfig);
+  // Early-warning engine
+  apiRouter.get('/risk-alerts', STAFF, risk.list);
+  apiRouter.post('/risk-alerts/recalculate', STAFF, risk.recalculate);
+  apiRouter.get('/risk-alerts/:id', STAFF, risk.get);
+  apiRouter.patch('/risk-alerts/:id', STAFF, risk.update);
+  apiRouter.get('/students/:id/risk', ANY, risk.forStudent);
+  apiRouter.get('/settings/risk', STAFF, risk.getConfig);
+  apiRouter.put('/settings/risk', ADMIN, risk.updateConfig);
+
+  return apiRouter;
+}

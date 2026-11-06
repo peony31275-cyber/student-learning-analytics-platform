@@ -10,6 +10,11 @@ const server = app.listen(env.PORT, () => {
   logger.info(
     `Sign-in rate limit: ${env.AUTH_RATE_LIMIT_MAX} failed attempts per IP per ${env.AUTH_RATE_LIMIT_WINDOW_MINUTES} min`,
   );
+  logger.info(
+    env.INVITE_DELIVERY === 'dev-link'
+      ? 'Activation invites: dev-link (development only: links are shown to the staff member who creates them)'
+      : 'Activation invites: disabled (no secure delivery channel configured)',
+  );
 });
 
 /** Graceful shutdown: stop accepting connections, finish in-flight requests, close the pool. */

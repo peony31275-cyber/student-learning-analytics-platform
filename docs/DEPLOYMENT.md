@@ -57,12 +57,14 @@ git push -u origin main
    Or create a **Web Service** by hand with the same commands.
 3. Set the environment variables marked `sync: false`:
 
-| Variable       | Value                                                                                                                          |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `DATABASE_URL` | Neon **pooled** string                                                                                                         |
-| `DIRECT_URL`   | Neon **direct** string                                                                                                         |
-| `CORS_ORIGINS` | your Render URL, e.g. `https://learning-analytics.onrender.com`                                                                |
-| `JWT_SECRET`   | generated automatically by the blueprint (or `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`) |
+| Variable          | Value                                                                                                                                                                                        |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`    | Neon **pooled** string                                                                                                                                                                       |
+| `DIRECT_URL`      | Neon **direct** string                                                                                                                                                                       |
+| `CORS_ORIGINS`    | your Render URL, e.g. `https://learning-analytics.onrender.com`                                                                                                                              |
+| `JWT_SECRET`      | generated automatically by the blueprint (or `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`)                                                               |
+| `INVITE_DELIVERY` | already `disabled` in `render.yaml`. Keep it until a secure delivery channel (email) exists: invites then answer 503 and no token is created. `dev-link` is refused at startup in production |
+| `APP_URL`         | only needed once invites are delivered: the public URL used in activation links, e.g. `https://learning-analytics.onrender.com`                                                              |
 
 `NODE_ENV=production`, `WEB_DIST_DIR=web/dist` and the rest are already set in `render.yaml`.
 Leave `AUTH_RATE_LIMIT_MAX` and `AUTH_RATE_LIMIT_WINDOW_MINUTES` unset in production: the defaults

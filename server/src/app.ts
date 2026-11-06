@@ -11,10 +11,13 @@ import { prisma } from './lib/prisma.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import type { CredentialRateLimit } from './middleware/rate-limit.js';
 import { createAuthRouter } from './routes/auth.routes.js';
-import { apiRouter } from './routes/index.js';
+import { createApiRouter } from './routes/index.js';
 
 export interface AppOptions {
-  /** Rate limit for the credential endpoints; null turns it off (default in tests). */
+  /**
+   * Rate limit for the credential, activation and invite endpoints; null turns
+   * it off (the default in tests).
+   */
   authRateLimit?: CredentialRateLimit | null;
 }
 
@@ -64,7 +67,7 @@ export function createApp({
     }),
   );
   app.use('/api/v1/auth', createAuthRouter(authRateLimit));
-  app.use('/api/v1', apiRouter);
+  app.use('/api/v1', createApiRouter({ inviteRateLimit: authRateLimit }));
   app.use('/api', notFoundHandler);
 
   // Optional single-origin deployment: serve the built React app from Express.

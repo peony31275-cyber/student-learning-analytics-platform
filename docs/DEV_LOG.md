@@ -17,15 +17,17 @@ estimated or extrapolated. There are no user or traffic numbers because the app 
 
 ## Milestones
 
-| Milestone                                      | Commit        | Verified by                                                                                           |
-| ---------------------------------------------- | ------------- | ----------------------------------------------------------------------------------------------------- |
-| M0–M2 scaffold, schema, migrations, seed, auth | `dcb7145`     | `prisma validate`, migration applied, seed run twice with identical output, 19 auth integration tests |
-| M3 core API                                    | `b4dd96f`     | 50 tests (+31)                                                                                        |
-| M5 early-warning engine                        | `91909e3`     | 20 unit tests, all passing on the first run                                                           |
-| M4 analytics API                               | `e98a111`     | 83 tests; live `curl` checks against seeded data                                                      |
-| M6 frontend                                    | `479a519`     | typecheck, lint, production build, headless-browser screenshots, 8 RTL tests                          |
-| M7 hardening + CI                              | `6d9bf3b`     | coverage run, format/lint/typecheck clean                                                             |
-| M8 deployment config + docs                    | (this commit) | production build served by Express, browser test against it                                           |
+| Milestone                                                         | Commit                              | Verified by                                                                                           |
+| ----------------------------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| M0–M2 scaffold, schema, migrations, seed, auth                    | `dcb7145`                           | `prisma validate`, migration applied, seed run twice with identical output, 19 auth integration tests |
+| M3 core API                                                       | `b4dd96f`                           | 50 tests (+31)                                                                                        |
+| M5 early-warning engine                                           | `91909e3`                           | 20 unit tests, all passing on the first run                                                           |
+| M4 analytics API                                                  | `e98a111`                           | 83 tests; live `curl` checks against seeded data                                                      |
+| M6 frontend                                                       | `479a519`                           | typecheck, lint, production build, headless-browser screenshots, 8 RTL tests                          |
+| M7 hardening + CI                                                 | `6d9bf3b`                           | coverage run, format/lint/typecheck clean                                                             |
+| M8 deployment config + docs                                       | `9aa9cf8`                           | production build served by Express, browser test against it                                           |
+| Fixes: sign-out, sidebar, rate limiting                           | `bb33fb0`, `e32d053`, `902457a`     | regression tests for each (bugs 7–9 below); every commit checked out and tested on its own            |
+| Account security: activation invites, first-login password change | `feat(auth)` commit after `902457a` | 39 new server tests, 14 new web tests, browser scenarios A–C (section below)                          |
 
 ## Measured results
 
@@ -36,13 +38,15 @@ evaluated 180 enrollments in 349 ms on a local database: 139 LOW, 15 MEDIUM, 26 
 **Tests** (`npm test`):
 
 ```
-server  Test Files 6 passed (6)   Tests 92 passed (92)
-web     Test Files 3 passed (3)   Tests 19 passed (19)
+server  Test Files 10 passed (10)   Tests 126 passed (126)
+web     Test Files 4 passed (4)    Tests 33 passed (33)
 ```
 
-**Server coverage** (`npm run test:coverage -w server`): statements 89.18% (882/989),
-branches 73.86% (390/528), functions 91.44% (278/304), lines 91.26% (784/859).
-`src/domain/risk`: 99.09% statements, 100% lines.
+**Server coverage** (`npm run test:coverage -w server`, after the account-security work):
+statements 90.75% (972/1071), branches 75.91% (435/573), functions 93.69% (312/333), lines 92.61%
+(865/934). `src/domain/risk`: 99.10% statements, 100% lines. New security code:
+`activation.service` 95.3% statements / 92% branches; `auth.service`, `lib/tokens`, `config/env` and
+`authenticate` 100%.
 
 **Production build** (`npm run build`): web entry chunk 364.6 kB (113.2 kB gzip); Recharts split
 into a lazy chunk of 385.0 kB (110.7 kB gzip), so the login page does not load it.
@@ -106,6 +110,46 @@ with 0 console errors under the CSP, recorded attendance, reloaded and confirmed
    and Student all returned 200; failed attempts were blocked with `429` and `Retry-After`, the login
    page showed "Try again in 15 seconds", and sign-in worked again after the window.
 
+## Account security enhancement (2026-11-05)
+
+Replaced the "student number + email" self-registration (anyone who knew both could claim an
+unactivated student) with one-time activation invites, and added a forced password change on the
+first sign-in of admin-created accounts.
+
+- **Migration** `20261106052320_account_security`: adds `users.mustChangePassword` (default `false`)
+  and the `activation_tokens` table. Generated with `prisma migrate diff` from the committed schema,
+  reviewed (only `ADD COLUMN` / `CREATE TABLE` / indexes / foreign keys) and applied to the dev
+  database with `prisma migrate deploy`. Data afterwards: 11 users, 60 students, 1,440 grades and
+  3,240 attendance records, unchanged; 0 accounts flagged, so every demo login still works.
+- **Tests:** 39 new server tests (activation 16, delivery disabled 2, environment validation 4,
+  first sign-in 10, authorization 4, rate limit 1, auth 2) and 14 new web tests; the 5 tests of the
+  removed registration endpoint were replaced by one proving it can no longer create an account.
+- **Browser (headless Edge, dev servers):** 41 checks across scenario A (admin creates a profile,
+  invites, the student activates and sees their own data), B (temporary password, forced change,
+  old session revoked server-side, re-login) and C (invalid, used, replaced and expired links,
+  student and teacher RBAC, cross-teacher 404s, disabled account not re-activated), all passing
+  with 0 page errors. A second script checked the session-ending navigations (15 checks).
+
+Problems found while building it:
+
+1. **Deadlock between two activations for one student.** The concurrency test with two different
+   valid tokens got a 500: PostgreSQL `40P01`. Each transaction held its own token row and waited for
+   the other's insert into the users email index. Fixed by locking the profile row first in every
+   code path that touches a student's login or invites; the loser now gets 409. The test was then
+   run five more times in a row, all passing.
+2. **Preview showed the stored email casing** while the account uses the lowercased address. Fixed.
+3. **The session was read from a context above the router**, which updates a tick after the cache,
+   so the login page could see the previous user right after signing out. `useAuth()` now reads the
+   session through its own query observer.
+4. **Redirect races under router transitions** (found by the browser check, not by the jsdom tests).
+   After a password change the "password changed" notice was lost, and after signing out from a deep
+   page the next person was sent to that page. React Router applies navigations as transitions, so a
+   route guard re-rendered with no user first and issued its own redirect. `flushSync` on the
+   navigations did not fix it; making the competing redirects identical did: a deliberate session end
+   is recorded (`sessionEnd`) and the guards redirect with the same state, and the login page's own
+   redirect uses the same destination as its submit handler. Two web tests and three browser checks
+   cover it, including returning to the previous page after an _expired_ session.
+
 ## Environment notes
 
 - On Windows, stopping the shell that runs `npm run dev` can leave `tsx watch` and its child running,
@@ -113,6 +157,9 @@ with 0 console errors under the CSP, recorded attendance, reloaded and confirmed
   `Get-NetTCPConnection -LocalPort 4000 -State Listen` and stop the tree with `taskkill /PID <pid> /T /F`.
 
 ## Not yet done
+
+- Email delivery for activation invites. Until it exists, production keeps `INVITE_DELIVERY=disabled`.
+- Password reset ("forgot password") and an admin reset for existing accounts.
 
 - Cloud deployment (needs Neon and Render accounts; see `docs/DEPLOYMENT.md`).
 - The first GitHub Actions run (needs the repository to be pushed).

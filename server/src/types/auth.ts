@@ -12,6 +12,8 @@ export interface AuthUser {
   teacherId: string | null;
   /** Present when role === STUDENT and the account is linked to a profile. */
   studentId: string | null;
+  /** True until a user created with a temporary password picks their own. */
+  mustChangePassword: boolean;
 }
 
 export interface JwtPayload {

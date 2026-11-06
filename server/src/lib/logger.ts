@@ -10,6 +10,8 @@ export const logger = pino({
       'res.headers["set-cookie"]',
       '*.password',
       '*.passwordHash',
+      '*.token',
+      '*.activationUrl',
     ],
     censor: '[REDACTED]',
   },

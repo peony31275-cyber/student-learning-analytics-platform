@@ -67,8 +67,33 @@ controller has one job: turn HTTP into a typed service call.
   Successful sign-ins are not counted, so switching accounts never locks anyone out. A blocked
   request gets `429` with `Retry-After` and a message saying when to try again. The whole API also
   has a coarser limit of 600 requests per minute per IP.
-- Public registration can only create **STUDENT** accounts, and only for a student record the
-  school already created (matching student number + email). A `role` field in the request is ignored.
+- **Students activate their login with a one-time invite**, not by typing a student number and
+  email (anyone who knew those could have claimed the account). An admin, or a teacher for a
+  student in one of their courses, creates the invite. The API generates 32 bytes from the OS
+  CSPRNG (`crypto.randomBytes`, base64url) and stores **only the SHA-256 hash**, with a 24-hour
+  expiry. Creating a new invite revokes the earlier ones, and so does an admin linking a login
+  directly. The link carries the token in the URL fragment (`/activate#token=…`), which browsers
+  never send to a server; the page posts it in a request body, so it never appears in access logs
+  or `Referer` headers. The account is built from the profile (email, name, school, role STUDENT);
+  the client only chooses the password, and no session is started. Unknown, expired, used and
+  revoked tokens, inactive records and students that already have an account (**including a
+  disabled one**) are refused with distinct codes.
+- **Activation is one transaction with a fixed lock order.** It locks the student's profile row
+  (`SELECT … FOR UPDATE`), re-checks that there is no login, claims the token with a conditional
+  `UPDATE … WHERE usedAt IS NULL AND revokedAt IS NULL AND expiresAt > now()`, creates the user
+  (email is unique), links the profile and revokes the other invites. Creating an invite takes the
+  same lock first. A test fires five parallel requests with one token, and two with different
+  tokens; exactly one account results.
+- **Invite delivery** is a setting, not a code path that leaks. `INVITE_DELIVERY=disabled`, the
+  default, answers 503 and creates no token; `dev-link` returns the link to the staff member who
+  asked, for local testing only. Startup validation refuses `dev-link` when `NODE_ENV=production`.
+  An email channel would slot in at the same place.
+- **First sign-in with a temporary password.** Accounts an admin creates carry
+  `mustChangePassword`. `requirePasswordChanged` runs right after `authenticate` on every business
+  route, so until the user picks their own password the API answers `403 PASSWORD_CHANGE_REQUIRED`
+  to everything except `/auth/me`, `/auth/password` and logout. Changing a password bumps
+  `tokenVersion`, which ends every session including the current one, and clears the flag; the user
+  signs in again. Existing accounts got `false` from the migration, so the demo logins still work.
 
 _Q: Why count only failed attempts, and why not reset the counter after a successful sign-in?_
 Successful sign-ins are not an attack, and counting them locked out legitimate users (a tester
@@ -79,6 +104,19 @@ _Q: Per IP or per account?_ Per IP today. Per account alone would let an attacke
 out on purpose; per IP alone shares one budget across a NAT. The usual next step is two limits: a
 strict one per (IP, account) and a looser one per IP. The in-memory store also needs Redis once
 there is more than one server instance.
+_Q: Why SHA-256 for activation tokens but bcrypt for passwords?_ bcrypt exists to slow down
+guessing of low-entropy secrets. A 256-bit random token cannot be guessed, so a fast hash already
+makes a leaked database useless, and a deterministic hash lets the database find the token through
+a unique index instead of comparing hashes row by row.
+_Q: How do you stop two requests from activating the same student twice?_ The token claim is a
+conditional `UPDATE`, so only one request can mark it used, and the email is unique. The first
+version deadlocked when two _different_ tokens for one student raced (PostgreSQL `40P01`): each
+transaction held its own token row and waited for the other's insert into the users index. Locking
+the profile row first, in every code path that touches a student's login or invites, makes
+competing requests queue instead; the loser sees the new account and gets 409.
+_Q: Why enforce the first-login password change on the server?_ A route guard in the SPA is only
+navigation. Anyone with the cookie can call the API directly, so the middleware refuses every
+business endpoint until the flag is cleared; the frontend redirect is just the friendly version.
 _Q: Why not store the JWT in localStorage?_ Any XSS could read it. An httpOnly cookie
 cannot be read by script, and SameSite handles CSRF for a same-origin app.
 _Q: Stateless JWT but you hit the DB every request, so why JWT?_ The token still carries a
@@ -100,7 +138,8 @@ Every list query composes the fragment (`AND: [scope, filters]`), and every sing
 endpoint calls an `assert…Access` helper first. Out-of-scope IDs return **404, not 403**, so
 nobody can tell whether another teacher's student exists (protection against IDOR enumeration).
 The frontend route guards are only for UX; the tests call the API directly to show the server
-enforces everything on its own.
+enforces everything on its own, including an object-level sweep that requests another teacher's
+student and course through every read and write endpoint (all 404).
 
 A bug found during UI review shows why this matters: the student list showed a student's risk
 level computed across _all_ their courses, including other teachers' courses. The fix scoped the
@@ -165,7 +204,15 @@ a deliberate split.
   the views it affects. For example, saving grades refreshes analytics, risk and student views.
   A 30-second `staleTime` removes duplicate requests while navigating; 4xx responses are never retried.
 - **The session is the `/auth/me` query.** A global 401 listener drops the UI to the login page if the
-  cookie expires or is revoked.
+  cookie expires or is revoked. `useAuth()` reads that query through its own observer, so a screen
+  rendered right after signing in or out already sees the new session (the provider sits above the
+  router and would otherwise update a tick later).
+- **Redirects that can race always agree.** React Router applies navigations as transitions, so a
+  route guard can re-render, and redirect, before an explicit navigation lands. A deliberate
+  sign-out or password change therefore records why the session ended (`sessionEnd`), and guards
+  redirect to `/login` with that same state instead of remembering the old page; the login page's
+  own redirect uses the same destination as its submit handler. An expired session still returns
+  the user to where they were.
 - **Filter state lives in the URL** (`?courseId=…&riskLevel=HIGH&page=2`), so views can be
   shared and bookmarked and survive a refresh.
 - Every data view uses `QueryState` to handle **loading / error (with retry) / empty / data** the same way.
@@ -199,7 +246,10 @@ PostgreSQL service container.
 - [x] Zod validation of every body, query and path parameter (UUIDs checked before DB access)
 - [x] Parameterized SQL only; explicit `select` allow-lists (no `passwordHash` in any response)
 - [x] Helmet security headers (CSP, HSTS, nosniff, frame-ancestors), `x-powered-by` disabled
-- [x] Rate limiting (credentials + global), 100 kB JSON body limit
+- [x] Rate limiting (failed credential and activation attempts per endpoint, invites, global), 100 kB JSON body limit
+- [x] One-time activation invites: 256-bit tokens, SHA-256 at rest, 24 h expiry, single use, revocation, row-locked transaction
+- [x] Activation tokens never in server-side URLs or logs (fragment + POST body, log redaction); dev-only link delivery refused in production
+- [x] Forced first-login password change for admin-created accounts, enforced by middleware; a password change ends every session
 - [x] Secrets only via environment variables, validated at startup; `.env` git-ignored
 - [x] Logs redact `Authorization`, `Cookie`, `Set-Cookie` and password fields
 - [x] Seed script refuses to run against production unless explicitly overridden

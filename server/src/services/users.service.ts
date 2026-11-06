@@ -14,6 +14,7 @@ const userSelect = {
   firstName: true,
   lastName: true,
   isActive: true,
+  mustChangePassword: true,
   lastLoginAt: true,
   createdAt: true,
   teacherProfile: { select: { id: true, department: true, title: true } },
@@ -72,6 +73,9 @@ export async function createUser(admin: AuthUser, input: CreateUserInput) {
         role: input.role,
         firstName: input.firstName,
         lastName: input.lastName,
+        // The admin chose this password, so it is temporary: the user must
+        // replace it at first sign-in (enforced by requirePasswordChanged).
+        mustChangePassword: true,
         ...(input.role === 'TEACHER' && {
           teacherProfile: { create: { department: input.department ?? null } },
         }),
@@ -86,6 +90,11 @@ export async function createUser(admin: AuthUser, input: CreateUserInput) {
       });
       if (linked.count !== 1)
         throw badRequest('Student profile not found or already linked to an account');
+      // The profile has a login now, so outstanding activation invites are void.
+      await tx.activationToken.updateMany({
+        where: { studentId: input.studentId!, usedAt: null, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
     }
     return tx.user.findUniqueOrThrow({ where: { id: user.id }, select: userSelect });
   });

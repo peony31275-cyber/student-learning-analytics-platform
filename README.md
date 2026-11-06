@@ -10,13 +10,13 @@ risk-engine configuration.
 
 ## Features
 
-| Area                      | What it does                                                                                                                                                                                                                                                                                                  |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Auth & RBAC**           | Registration (student account activation), login, logout, logout-everywhere, password change. bcrypt hashing, JWT in an httpOnly cookie, `tokenVersion` revocation. Three roles (Admin / Teacher / Student) enforced on the server, with row-level data scoping.                                              |
-| **Student management**    | Create, list, search, filter (course, grade, risk), paginate, view and update students. Teachers only see students enrolled in their courses.                                                                                                                                                                 |
-| **Courses & performance** | Courses, enrollments (enroll / drop / re-enroll), assessments with weights, bulk grade entry with an audit history of every change, attendance taking per class meeting.                                                                                                                                      |
-| **Analytics dashboard**   | Overview KPIs, weekly score trends (overall / by course), course comparison, attendance by week and attendance-rate bands, at-risk distribution with top causes, per-student progress against the class average. Every chart has a tooltip, a legend where needed and a table view; light and dark themes.    |
-| **Early-warning engine**  | Four transparent rules (recent performance, declining trend, attendance, completion) produce a 0–100 score and a LOW / MEDIUM / HIGH level. Thresholds are configurable per school, results are persisted with the reasons, and recalculation runs automatically after grade/attendance changes or on demand. |
+| Area                      | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Auth & RBAC**           | Student activation through one-time invite links (24 h, single use, only a SHA-256 hash stored, revoked when reissued), forced password change on first sign-in for admin-created accounts (enforced by the API), login, logout, logout-everywhere. bcrypt, JWT in an httpOnly cookie, `tokenVersion` revocation, per-endpoint rate limits on failed attempts. Three roles (Admin / Teacher / Student) enforced on the server, with row-level data scoping. |
+| **Student management**    | Create, list, search, filter (course, grade, risk), paginate, view and update students. Teachers only see students enrolled in their courses.                                                                                                                                                                                                                                                                                                               |
+| **Courses & performance** | Courses, enrollments (enroll / drop / re-enroll), assessments with weights, bulk grade entry with an audit history of every change, attendance taking per class meeting.                                                                                                                                                                                                                                                                                    |
+| **Analytics dashboard**   | Overview KPIs, weekly score trends (overall / by course), course comparison, attendance by week and attendance-rate bands, at-risk distribution with top causes, per-student progress against the class average. Every chart has a tooltip, a legend where needed and a table view; light and dark themes.                                                                                                                                                  |
+| **Early-warning engine**  | Four transparent rules (recent performance, declining trend, attendance, completion) produce a 0–100 score and a LOW / MEDIUM / HIGH level. Thresholds are configurable per school, results are persisted with the reasons, and recalculation runs automatically after grade/attendance changes or on demand.                                                                                                                                               |
 
 ## Architecture
 
@@ -64,6 +64,34 @@ Open http://localhost:5173. Demo accounts (password `Password123`):
 | Teacher | `teacher1@riverside.edu` (also `teacher2`, `teacher3`)  |
 | Student | `student1@riverside.edu` (also `student2` … `student5`) |
 
+### Trying student activation and first sign-in locally
+
+There is no email service, so `server/.env.example` sets `INVITE_DELIVERY=dev-link`: the API returns
+the activation link to the staff member who creates it. This mode is for local development only; the
+server refuses to start with it when `NODE_ENV=production`, where invites stay disabled (503) until a
+secure delivery channel such as email is added.
+
+**Student activation**
+
+1. Sign in as `admin@riverside.edu` (or as a teacher, for a student in one of their courses).
+2. Open **Students**, then a student whose header says "no login yet" (or use **Add student** and give
+   the student a school email).
+3. Click **Invite to activate**, then **Create link**, and copy the link. It is valid for 24 hours and
+   works once; creating a new link replaces the old one.
+4. Open the link in a private window, choose a password, then sign in with the school email.
+   The student lands on **My progress** and only sees their own data.
+5. To see the error states, open the same link again (already used), open an older link after
+   creating a new one (replaced), or change a character of the token (not valid).
+
+**Teacher first sign-in**
+
+1. As the admin, open **Users** and choose **Add staff user**, with role Teacher and a temporary password.
+2. Sign in as the new teacher in a private window. The app shows **Set your own password**, and the
+   API answers `403 PASSWORD_CHANGE_REQUIRED` to everything else until then.
+3. After the change every session ends; sign in again with the new password to reach the dashboard.
+
+The demo accounts above are not affected: existing accounts have `mustChangePassword = false`.
+
 To use Neon instead of the local database, put the Neon connection strings in `DATABASE_URL`
 and `DIRECT_URL` (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
 
@@ -83,12 +111,16 @@ and `DIRECT_URL` (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
 
 Measured on the development machine (see [docs/DEV_LOG.md](docs/DEV_LOG.md) for the record):
 
-- **Server: 84 tests**: 20 unit tests for the risk engine, and 64 integration tests that go through
-  the full HTTP stack against a real PostgreSQL database. They cover authentication, the
-  authorization matrix (role checks, cross-teacher and cross-school isolation, IDOR attempts),
-  CRUD, validation, transactions and rollbacks, analytics numbers checked by hand, and the alert lifecycle.
-- **Web: 8 tests** (React Testing Library): data states, risk explanation, login flow, role guard.
-- Server coverage: 89% statements, 91% lines, 74% branches; the `domain/risk` engine is at 99% / 100%.
+- **Server: 126 tests**: 24 unit tests (risk engine, environment validation) and 102 integration
+  tests that go through the full HTTP stack against a real PostgreSQL database. They cover
+  authentication, student activation (valid, invalid, expired, reused, revoked and concurrent
+  tokens, disabled accounts), the first-sign-in password change, rate limiting, the authorization
+  matrix (role checks, an object-level sweep of every student and course endpoint, cross-school
+  isolation), CRUD, validation, transactions and rollbacks, analytics numbers checked by hand, and
+  the alert lifecycle.
+- **Web: 33 tests** (React Testing Library): data states, risk explanation, login, sign-out, route
+  guards, the activation page, the forced password change, the invite dialog and sidebar layout.
+- Server coverage: 91% statements, 93% lines, 76% branches; the `domain/risk` engine is at 99% / 100%.
 - CI (`.github/workflows/ci.yml`) runs format, lint, typecheck, all tests against a PostgreSQL
   service container, and the production build on every push and pull request.
 
@@ -130,7 +162,9 @@ docs/                architecture, database, API, deployment, development log
 
 - The risk engine is a **transparent rule-based rubric, not a machine-learning model**. It does not
   predict outcomes; it flags combinations of known warning signs, and it explains each one.
-- Student self-registration matches student number + email against a staff-created record. A
-  production system would add email verification or invite tokens.
+- Activation invites need a delivery channel. There is no email integration yet, so in production
+  invites are disabled; only the development-only `dev-link` mode shows links to staff.
+- There is no "forgot password" flow and no admin password reset for existing accounts.
 - Sessions are single JWTs (8h) with server-side revocation via `tokenVersion`; there is no refresh-token rotation.
+- Rate limits are kept in process memory, which is right for one instance; several instances would need a shared store such as Redis.
 - Multi-school data isolation is implemented and tested, but there is no UI to create schools (seeded).

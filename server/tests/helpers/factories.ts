@@ -17,7 +17,7 @@ const uniq = () => `${Date.now().toString(36)}${(counter++).toString(36)}`;
 
 export async function resetDb() {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE risk_alerts, grade_history, grades, attendance, assessments, enrollments, courses, student_profiles, teacher_profiles, users, schools CASCADE',
+    'TRUNCATE TABLE activation_tokens, risk_alerts, grade_history, grades, attendance, assessments, enrollments, courses, student_profiles, teacher_profiles, users, schools CASCADE',
   );
 }
 

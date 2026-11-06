@@ -115,10 +115,14 @@ export function UsersPage() {
                           {u.lastLoginAt ? fmtDate(u.lastLoginAt) : 'never'}
                         </td>
                         <td>
-                          {u.isActive ? (
-                            <span className="badge badge-low">Active</span>
-                          ) : (
+                          {!u.isActive ? (
                             <span className="badge">Disabled</span>
+                          ) : u.mustChangePassword ? (
+                            <span className="badge" title="Has not replaced the temporary password">
+                              Temporary password
+                            </span>
+                          ) : (
+                            <span className="badge badge-low">Active</span>
                           )}
                         </td>
                         <td className="right">
@@ -222,7 +226,7 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
             required
           />
         </Field>
-        <Field label="Initial password (8+ chars, letter and number)" htmlFor="u-p">
+        <Field label="Temporary password (8+ chars, letter and number)" htmlFor="u-p">
           <input
             id="u-p"
             type="password"
@@ -234,7 +238,9 @@ function CreateUserModal({ onClose }: { onClose: () => void }) {
           />
         </Field>
         <p className="subtle" style={{ margin: 0 }}>
-          Students activate their own accounts from the sign-in page using their student number.
+          The user must replace this password at first sign-in, and nobody can view it later, so
+          share it securely. Students get a one-time activation link from their student page
+          instead.
         </p>
         <div className="row" style={{ justifyContent: 'flex-end' }}>
           <button type="button" className="btn" onClick={onClose}>
