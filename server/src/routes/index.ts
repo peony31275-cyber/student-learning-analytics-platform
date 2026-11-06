@@ -13,6 +13,7 @@ import {
   studentsController as students,
   usersController as users,
 } from '../controllers/resource.controllers.js';
+import { analyticsController as analytics, riskController as risk } from '../controllers/insights.controllers.js';
 import { authenticate } from '../middleware/authenticate.js';
 import { requireRole } from '../middleware/authorize.js';
 import { authRouter } from './auth.routes.js';
@@ -67,3 +68,20 @@ apiRouter.delete('/assessments/:id', STAFF, assessments.remove);
 apiRouter.get('/assessments/:id/grades', STAFF, assessments.gradebook);
 apiRouter.put('/assessments/:id/grades', STAFF, assessments.upsertGrades);
 apiRouter.get('/grades/:id/history', STAFF, grades.history);
+
+// Analytics
+apiRouter.get('/analytics/overview', STAFF, analytics.overview);
+apiRouter.get('/analytics/score-trends', STAFF, analytics.scoreTrends);
+apiRouter.get('/analytics/course-comparison', STAFF, analytics.courseComparison);
+apiRouter.get('/analytics/attendance', STAFF, analytics.attendance);
+apiRouter.get('/analytics/risk-distribution', STAFF, analytics.riskDistribution);
+apiRouter.get('/analytics/students/:id/progress', ANY, analytics.studentProgress);
+
+// Early-warning engine
+apiRouter.get('/risk-alerts', STAFF, risk.list);
+apiRouter.post('/risk-alerts/recalculate', STAFF, risk.recalculate);
+apiRouter.get('/risk-alerts/:id', STAFF, risk.get);
+apiRouter.patch('/risk-alerts/:id', STAFF, risk.update);
+apiRouter.get('/students/:id/risk', ANY, risk.forStudent);
+apiRouter.get('/settings/risk', STAFF, risk.getConfig);
+apiRouter.put('/settings/risk', ADMIN, risk.updateConfig);
