@@ -1,0 +1,310 @@
+// Student Learning Analytics Platform — data model
+//
+// Design notes (see docs/DATABASE.md for the full rationale):
+// - Every tenant-owned row carries schoolId (directly or through its parent) so
+//   queries can always be scoped to the requester's school.
+// - Identity (User) is separated from domain profiles (StudentProfile /
+//   TeacherProfile). A student profile can exist before the student has a login.
+// - Enrollment is the explicit join table of the Student <-> Course many-to-many,
+//   because the relationship itself carries data (status, enrolledAt).
+// - Composite unique constraints encode business invariants in the database
+//   (one grade per student per assessment, one attendance mark per day, ...).
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────── Enums ─────────────────────────────
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  GRADUATED
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  DROPPED
+  COMPLETED
+}
+
+enum AssessmentType {
+  ASSIGNMENT
+  QUIZ
+  EXAM
+  PROJECT
+}
+
+enum GradeStatus {
+  SUBMITTED
+  LATE
+  MISSING
+  EXCUSED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum AlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+// ───────────────────────────── Tenancy ─────────────────────────────
+
+model School {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String
+  timezone   String   @default("America/New_York")
+  /// Early-warning engine configuration (validated by Zod in the service layer).
+  /// Null means "use the built-in defaults".
+  riskConfig Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  users    User[]
+  students StudentProfile[]
+  courses  Course[]
+
+  @@map("schools")
+}
+
+// ───────────────────────────── Identity ─────────────────────────────
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  schoolId     String    @db.Uuid
+  email        String    @unique
+  passwordHash String
+  role         Role
+  firstName    String
+  lastName     String
+  isActive     Boolean   @default(true)
+  /// Incremented to invalidate every JWT issued before (logout-all, password
+  /// change, deactivation). Checked on every authenticated request.
+  tokenVersion Int       @default(0)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  school         School          @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  teacherProfile TeacherProfile?
+  studentProfile StudentProfile?
+
+  @@index([schoolId, role])
+  @@map("users")
+}
+
+model TeacherProfile {
+  id         String  @id @default(uuid()) @db.Uuid
+  userId     String  @unique @db.Uuid
+  department String?
+  title      String?
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courses Course[]
+
+  @@map("teacher_profiles")
+}
+
+model StudentProfile {
+  id            String        @id @default(uuid()) @db.Uuid
+  schoolId      String        @db.Uuid
+  /// Optional: a profile is created by staff; the login account is linked later.
+  userId        String?       @unique @db.Uuid
+  studentNumber String
+  firstName     String
+  lastName      String
+  email         String?
+  gradeLevel    Int
+  status        StudentStatus @default(ACTIVE)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  school      School       @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  enrollments Enrollment[]
+  grades      Grade[]
+  attendance  Attendance[]
+  riskAlerts  RiskAlert[]
+
+  @@unique([schoolId, studentNumber])
+  @@index([schoolId, lastName, firstName])
+  @@index([schoolId, email])
+  @@map("student_profiles")
+}
+
+// ───────────────────────────── Academics ─────────────────────────────
+
+model Course {
+  id          String   @id @default(uuid()) @db.Uuid
+  schoolId    String   @db.Uuid
+  teacherId   String   @db.Uuid
+  code        String
+  name        String
+  description String?
+  term        String
+  credits     Int      @default(3)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  school      School         @relation(fields: [schoolId], references: [id], onDelete: Restrict)
+  teacher     TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Restrict)
+  enrollments Enrollment[]
+  assessments Assessment[]
+  attendance  Attendance[]
+  riskAlerts  RiskAlert[]
+
+  @@unique([schoolId, code, term])
+  @@index([teacherId])
+  @@map("courses")
+}
+
+/// Join table for the Student <-> Course many-to-many relationship.
+model Enrollment {
+  id         String           @id @default(uuid()) @db.Uuid
+  studentId  String           @db.Uuid
+  courseId   String           @db.Uuid
+  status     EnrollmentStatus @default(ACTIVE)
+  enrolledAt DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course  Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, courseId])
+  @@index([courseId, status])
+  @@map("enrollments")
+}
+
+model Assessment {
+  id        String         @id @default(uuid()) @db.Uuid
+  courseId  String         @db.Uuid
+  title     String
+  type      AssessmentType
+  maxScore  Decimal        @db.Decimal(7, 2)
+  /// Relative weight inside the course (e.g. exams 2.0, quizzes 0.5).
+  weight    Decimal        @default(1) @db.Decimal(5, 2)
+  dueDate   DateTime
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  course Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  grades Grade[]
+
+  @@index([courseId, dueDate])
+  @@map("assessments")
+}
+
+model Grade {
+  id           String      @id @default(uuid()) @db.Uuid
+  assessmentId String      @db.Uuid
+  studentId    String      @db.Uuid
+  /// Null when the work is MISSING or EXCUSED.
+  score        Decimal?    @db.Decimal(7, 2)
+  status       GradeStatus @default(SUBMITTED)
+  feedback     String?
+  gradedAt     DateTime    @default(now())
+  gradedById   String?     @db.Uuid
+  updatedAt    DateTime    @updatedAt
+
+  assessment Assessment     @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  student    StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  history    GradeHistory[]
+
+  @@unique([assessmentId, studentId])
+  @@index([studentId])
+  @@map("grades")
+}
+
+/// Append-only audit trail of grade changes ("成绩历史记录").
+model GradeHistory {
+  id          String       @id @default(uuid()) @db.Uuid
+  gradeId     String       @db.Uuid
+  oldScore    Decimal?     @db.Decimal(7, 2)
+  newScore    Decimal?     @db.Decimal(7, 2)
+  oldStatus   GradeStatus?
+  newStatus   GradeStatus
+  changedById String?      @db.Uuid
+  reason      String?
+  changedAt   DateTime     @default(now())
+
+  grade Grade @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+
+  @@index([gradeId, changedAt])
+  @@map("grade_history")
+}
+
+model Attendance {
+  id           String           @id @default(uuid()) @db.Uuid
+  studentId    String           @db.Uuid
+  courseId     String           @db.Uuid
+  date         DateTime         @db.Date
+  status       AttendanceStatus
+  note         String?
+  recordedById String?          @db.Uuid
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course  Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, courseId, date])
+  @@index([courseId, date])
+  @@map("attendance")
+}
+
+// ───────────────────────────── Early warning ─────────────────────────────
+
+/// Current risk evaluation for one student in one course. Recalculation
+/// upserts this row, so there is exactly one alert per enrollment.
+model RiskAlert {
+  id               String      @id @default(uuid()) @db.Uuid
+  studentId        String      @db.Uuid
+  courseId         String      @db.Uuid
+  level            RiskLevel
+  previousLevel    RiskLevel?
+  /// 0–100 composite score produced by the rule engine.
+  score            Int
+  /// Explainable reasons: [{ code, message, points, value, threshold }]
+  factors          Json
+  /// Raw metrics the rules were evaluated against (for auditing the decision).
+  metrics          Json
+  status           AlertStatus @default(OPEN)
+  computedAt       DateTime    @default(now())
+  acknowledgedAt   DateTime?
+  acknowledgedById String?     @db.Uuid
+  note             String?
+
+  student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course  Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, courseId])
+  @@index([courseId, level])
+  @@index([level, status])
+  @@map("risk_alerts")
+}
