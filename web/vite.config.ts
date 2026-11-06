@@ -15,7 +15,8 @@ export default defineConfig({
     rollupOptions: {
       output: {
         // Charts are the heaviest dependency; split them so the login page loads fast.
-        manualChunks: (id) => (id.includes('recharts') || id.includes('d3-') ? 'charts' : undefined),
+        manualChunks: (id) =>
+          id.includes('recharts') || id.includes('d3-') ? 'charts' : undefined,
       },
     },
   },

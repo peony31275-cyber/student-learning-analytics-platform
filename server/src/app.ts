@@ -2,6 +2,7 @@ import path from 'node:path';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
+import { rateLimit } from 'express-rate-limit';
 import helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
 import { env, isProduction, isTest } from './config/env.js';
@@ -39,6 +40,18 @@ export function createApp() {
     res.json({ data: { status: 'ok', time: new Date().toISOString() } });
   });
 
+  // Coarse abuse protection for the whole API (credential routes have a stricter limiter).
+  app.use(
+    '/api/v1',
+    rateLimit({
+      windowMs: 60_000,
+      limit: 600,
+      standardHeaders: 'draft-8',
+      legacyHeaders: false,
+      skip: () => isTest,
+      message: { error: { code: 'RATE_LIMITED', message: 'Too many requests, slow down' } },
+    }),
+  );
   app.use('/api/v1', apiRouter);
   app.use('/api', notFoundHandler);
 

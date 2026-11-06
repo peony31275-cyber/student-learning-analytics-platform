@@ -126,14 +126,12 @@ describe('Core API', () => {
             .send({ code: 'X-1', name: 'Xylophone', term: '2026-Fall' })
         ).status,
       ).toBe(400);
-      const res = await admin
-        .post('/api/v1/courses')
-        .send({
-          code: 'X-1',
-          name: 'Xylophone',
-          term: '2026-Fall',
-          teacherId: w.teacherB.teacherProfile!.id,
-        });
+      const res = await admin.post('/api/v1/courses').send({
+        code: 'X-1',
+        name: 'Xylophone',
+        term: '2026-Fall',
+        teacherId: w.teacherB.teacherProfile!.id,
+      });
       expect(res.status).toBe(201);
     });
 
@@ -292,12 +290,10 @@ describe('Core API', () => {
       const url = `/api/v1/courses/${w.courseA.id}/attendance`;
       expect(
         (
-          await teacher
-            .put(url)
-            .send({
-              date: '2999-01-01',
-              records: [{ studentId: w.studentA.id, status: 'PRESENT' }],
-            })
+          await teacher.put(url).send({
+            date: '2999-01-01',
+            records: [{ studentId: w.studentA.id, status: 'PRESENT' }],
+          })
         ).status,
       ).toBe(400);
       expect(
@@ -309,12 +305,10 @@ describe('Core API', () => {
       ).toBe(400);
       expect(
         (
-          await teacher
-            .put(url)
-            .send({
-              date: '2026-10-05',
-              records: [{ studentId: w.studentB.id, status: 'PRESENT' }],
-            })
+          await teacher.put(url).send({
+            date: '2026-10-05',
+            records: [{ studentId: w.studentB.id, status: 'PRESENT' }],
+          })
         ).status,
       ).toBe(400);
     });
