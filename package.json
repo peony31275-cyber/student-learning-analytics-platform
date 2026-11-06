@@ -18,7 +18,9 @@
     "lint": "npm run lint --workspace server && npm run lint --workspace web",
     "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace web",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "start": "npm run db:deploy -w server && node server/dist/server.js",
+    "build:prod": "npm ci --include=dev && npm run build"
   },
   "devDependencies": {
     "concurrently": "^10.0.6",

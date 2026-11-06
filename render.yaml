@@ -1,0 +1,30 @@
+# Render Blueprint: one web service serving the API and the built React app.
+# Secrets (DATABASE_URL, DIRECT_URL, JWT_SECRET) are entered in the Render dashboard.
+services:
+  - type: web
+    name: learning-analytics
+    runtime: node
+    plan: free
+    region: virginia # pick the region closest to your Neon database
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22
+      - key: WEB_DIST_DIR
+        value: web/dist
+      - key: JWT_EXPIRES_IN
+        value: 8h
+      - key: BCRYPT_ROUNDS
+        value: 12
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true

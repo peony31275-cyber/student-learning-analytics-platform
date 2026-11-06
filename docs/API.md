@@ -1,0 +1,143 @@
+# REST API reference
+
+Base path: `/api/v1`. All request and response bodies are JSON.
+
+**Authentication:** `POST /auth/login` sets an httpOnly `sla_token` cookie, which browsers send
+automatically. Non-browser clients can send the same JWT as `Authorization: Bearer <token>`.
+
+**Response envelope**
+
+```jsonc
+// single resource / object
+{ "data": { … } }
+// list
+{ "data": [ … ], "meta": { "page": 1, "pageSize": 20, "total": 57, "totalPages": 3 } }
+// error
+{ "error": { "code": "VALIDATION_ERROR", "message": "Request validation failed",
+             "details": [{ "path": "email", "message": "Must be a valid email address" }] } }
+```
+
+**Status codes:** `200` OK · `201` created · `204` no content · `400` validation or business-rule error ·
+`401` not authenticated / invalid session · `403` role not allowed · `404` not found _or outside
+your data scope_ · `409` conflict (duplicate, constraint) · `429` rate limited · `500` unexpected.
+
+**Pagination:** list endpoints accept `page` (≥1, default 1) and `pageSize` (1–100, default 20).
+
+Roles: **A** = Admin, **T** = Teacher, **S** = Student. "Scoped" means results are limited to
+the caller's data (see [ARCHITECTURE.md §4](ARCHITECTURE.md#4-authorization-two-layers)).
+
+## Auth
+
+| Method | Path               | Roles  | Body / query                                              | Notes                                                           |
+| ------ | ------------------ | ------ | --------------------------------------------------------- | --------------------------------------------------------------- |
+| POST   | `/auth/login`      | public | `{ email, password }`                                     | sets cookie; returns `{ user }`                                 |
+| POST   | `/auth/register`   | public | `{ email, password, studentNumber, firstName, lastName }` | activates a student account for an existing student record; 201 |
+| POST   | `/auth/logout`     | public | –                                                         | clears cookie; 204                                              |
+| POST   | `/auth/logout-all` | any    | –                                                         | revokes every token for the user; 204                           |
+| GET    | `/auth/me`         | any    | –                                                         | current user                                                    |
+| PATCH  | `/auth/password`   | any    | `{ currentPassword, newPassword }`                        | revokes other sessions, re-issues cookie                        |
+
+Password policy: 8+ characters, at most 72 bytes, contains a letter and a number.
+
+## School and users
+
+| Method | Path         | Roles | Notes                                                                                                                                               |
+| ------ | ------------ | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/school`    | A T S | school info and counts                                                                                                                              |
+| PATCH  | `/school`    | A     | `{ name?, timezone? }`                                                                                                                              |
+| GET    | `/users`     | A     | `role`, `isActive`, `search`, pagination                                                                                                            |
+| POST   | `/users`     | A     | `{ email, password, role, firstName, lastName, department?, studentId? }` (TEACHER creates a teacher profile; STUDENT requires `studentId` to link) |
+| GET    | `/users/:id` | A     |                                                                                                                                                     |
+| PATCH  | `/users/:id` | A     | `{ firstName?, lastName?, isActive?, department? }`; deactivating revokes sessions; admins cannot deactivate themselves                             |
+
+## Students
+
+| Method | Path                       | Roles          | Notes                                                                                                                                                                   |
+| ------ | -------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/students`                | A T (scoped)   | `search`, `courseId`, `gradeLevel`, `status`, `riskLevel` (highest visible level), `sort` (`lastName`\|`studentNumber`\|`gradeLevel`\|`createdAt`), `order`, pagination |
+| GET    | `/students/directory`      | A T            | `search`, `limit` ≤ 50: minimal school-wide lookup for enrolling                                                                                                        |
+| POST   | `/students`                | A T            | `{ studentNumber, firstName, lastName, email?, gradeLevel, courseIds[] }`; teachers must include ≥1 of their courses; transactional                                     |
+| GET    | `/students/:id`            | A T S (scoped) | profile, visible enrollments, risk summary                                                                                                                              |
+| PATCH  | `/students/:id`            | A T (scoped)   | any profile field plus `status`                                                                                                                                         |
+| GET    | `/students/:id/grades`     | A T S (scoped) | `courseId?`; grades with percentages                                                                                                                                    |
+| GET    | `/students/:id/attendance` | A T S (scoped) | `courseId?`, `from?`, `to?` (YYYY-MM-DD)                                                                                                                                |
+| GET    | `/students/:id/risk`       | A T S (scoped) | current alerts with factors and suggestions                                                                                                                             |
+
+## Courses, enrollments, assessments, grades, attendance
+
+| Method | Path                               | Roles               | Notes                                                                                                                                                                                           |
+| ------ | ---------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/courses`                         | A T S (scoped)      | `search`, `term`, `teacherId`, pagination                                                                                                                                                       |
+| POST   | `/courses`                         | A T                 | `{ code, name, term (e.g. 2026-Fall), credits?, description?, teacherId? }` (admin must give `teacherId`); 409 on duplicate code+term                                                           |
+| GET    | `/courses/:id`                     | A T S (scoped)      |                                                                                                                                                                                                 |
+| PATCH  | `/courses/:id`                     | A T (manage)        | only admins may change `teacherId`                                                                                                                                                              |
+| DELETE | `/courses/:id`                     | A                   | cascades to the course's data; 204                                                                                                                                                              |
+| GET    | `/courses/:id/students`            | A T (manage)        | roster with enrollment status and risk                                                                                                                                                          |
+| GET    | `/courses/:id/assessments`         | A T S (scoped)      | with graded count and average %                                                                                                                                                                 |
+| POST   | `/courses/:id/assessments`         | A T (manage)        | `{ title, type, maxScore, weight?, dueDate }`                                                                                                                                                   |
+| PATCH  | `/assessments/:id`                 | A T (manage)        | lowering `maxScore` below existing grades → 409                                                                                                                                                 |
+| DELETE | `/assessments/:id`                 | A T (manage)        | 204                                                                                                                                                                                             |
+| GET    | `/assessments/:id/grades`          | A T (manage)        | gradebook: every active student, graded or not                                                                                                                                                  |
+| PUT    | `/assessments/:id/grades`          | A T (manage)        | `{ grades: [{ studentId, score?, status, feedback? }], reason? }`: bulk upsert in one transaction, writes grade history, triggers risk recalculation; returns `{ created, updated, unchanged }` |
+| GET    | `/grades/:id/history`              | A T (manage)        | audit trail of a grade                                                                                                                                                                          |
+| GET    | `/courses/:id/attendance`          | A T (manage)        | `date=YYYY-MM-DD`: roster with that day's marks                                                                                                                                                 |
+| PUT    | `/courses/:id/attendance`          | A T (manage)        | `{ date, records: [{ studentId, status, note? }] }`: idempotent upsert; future dates rejected                                                                                                   |
+| GET    | `/courses/:id/attendance/sessions` | A T (manage)        | recorded dates with per-status counts                                                                                                                                                           |
+| GET    | `/enrollments`                     | A T (scoped)        | requires `courseId` or `studentId`; `status`, pagination                                                                                                                                        |
+| POST   | `/enrollments`                     | A T (manage course) | `{ studentId, courseId }`: 201 new, 200 re-activated, 409 already active                                                                                                                        |
+| PATCH  | `/enrollments/:id`                 | A T (manage)        | `{ status: ACTIVE \| DROPPED \| COMPLETED }`                                                                                                                                                    |
+
+Grade `status`: `SUBMITTED` / `LATE` (score required) · `MISSING` / `EXCUSED` (score stored as null).
+Attendance `status`: `PRESENT`, `LATE`, `ABSENT`, `EXCUSED`.
+
+## Analytics
+
+All analytics endpoints accept `courseId?` and `term?`. Teachers get their own courses, admins the whole school.
+
+| Method | Path                               | Roles          | Returns                                                                                                            |
+| ------ | ---------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/analytics/overview`              | A T            | counts, weighted average score, attendance rate, completion rate, risk distribution, at-risk students, open alerts |
+| GET    | `/analytics/score-trends`          | A T            | `{ overall: [{ period, averagePercent, gradedCount }], byCourse: [...] }` by assessment due week                   |
+| GET    | `/analytics/course-comparison`     | A T            | per course: students, average score, attendance, completion, risk counts                                           |
+| GET    | `/analytics/attendance`            | A T            | weekly present/late/absent/excused + rate; distribution of enrollments by attendance band                          |
+| GET    | `/analytics/risk-distribution`     | A T            | totals, per-course counts, most frequent risk factors                                                              |
+| GET    | `/analytics/students/:id/progress` | A T S (scoped) | per-course metrics and risk; each graded assessment vs. class average; weekly attendance                           |
+
+## Early-warning engine
+
+| Method | Path                       | Roles        | Notes                                                                                                                               |
+| ------ | -------------------------- | ------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/risk-alerts`             | A T (scoped) | `level` or `minLevel`, `status`, `courseId`, `studentId`, pagination; ordered by score                                              |
+| GET    | `/risk-alerts/:id`         | A T (scoped) |                                                                                                                                     |
+| PATCH  | `/risk-alerts/:id`         | A T (manage) | `{ status: OPEN \| ACKNOWLEDGED \| RESOLVED, note? }`                                                                               |
+| POST   | `/risk-alerts/recalculate` | A T          | `{ courseId? }`: teachers recalculate their courses, admins the whole school; returns `{ courses, evaluated, byLevel, durationMs }` |
+| GET    | `/settings/risk`           | A T          | effective configuration (defaults merged)                                                                                           |
+| PUT    | `/settings/risk`           | A            | full or partial config (validated: medium < high, critical worse than warn, no unknown keys); recalculates the school               |
+
+Alert `factors[]` item:
+
+```json
+{
+  "rule": "attendance",
+  "severity": "CRITICAL",
+  "points": 25,
+  "value": 76.5,
+  "threshold": 80,
+  "message": "Attendance is 76.5% (4 absences), below the 80% threshold",
+  "suggestion": "Contact the student and family about attendance and agree on a plan."
+}
+```
+
+## Health
+
+`GET /api/health` → `{ "data": { "status": "ok", "time": "…" } }` (runs `SELECT 1` against the database).
+
+## Example session (curl)
+
+```bash
+curl -c jar -H 'Content-Type: application/json' \
+     -d '{"email":"teacher1@riverside.edu","password":"Password123"}' \
+     http://localhost:4000/api/v1/auth/login
+curl -b jar 'http://localhost:4000/api/v1/students?riskLevel=HIGH&pageSize=5'
+curl -b jar http://localhost:4000/api/v1/analytics/overview
+```
