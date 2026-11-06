@@ -264,8 +264,14 @@ if (isMain) {
   const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
   try {
     const started = Date.now();
-    const { summary } = await seed(prisma);
+    const { schoolId, summary } = await seed(prisma);
+    // Run the early-warning engine so dashboards have alerts immediately.
+    const { recalculateForSchool } = await import('../src/services/risk.service.js');
+    const risk = await recalculateForSchool(schoolId);
     console.log('Seed complete:', summary, `in ${Date.now() - started}ms`);
+    console.log('Risk evaluation:', risk);
+    const { prisma: appPrisma } = await import('../src/lib/prisma.js');
+    await appPrisma.$disconnect();
   } finally {
     await prisma.$disconnect();
   }
