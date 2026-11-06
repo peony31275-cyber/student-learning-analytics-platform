@@ -204,8 +204,10 @@ describe('Authentication', () => {
     });
   });
 
-  it('returns a JSON 404 for unknown API routes', async () => {
-    const res = await request(app).get('/api/v1/nope');
+  it('returns 401 for unknown routes when unauthenticated and a JSON 404 when authenticated', async () => {
+    expect((await request(app).get('/api/v1/nope')).status).toBe(401);
+    const user = await createUser(schoolId, 'ADMIN');
+    const res = await (await loginAs(user.email)).get('/api/v1/nope');
     expect(res.status).toBe(404);
     expect(res.body.error.code).toBe('NOT_FOUND');
   });
