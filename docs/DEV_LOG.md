@@ -129,6 +129,15 @@ first sign-in of admin-created accounts.
   old session revoked server-side, re-login) and C (invalid, used, replaced and expired links,
   student and teacher RBAC, cross-teacher 404s, disabled account not re-activated), all passing
   with 0 page errors. A second script checked the session-ending navigations (15 checks).
+- **Test data cleanup:** the browser checks created clearly named records in the dev database (6
+  `E2E-*` student profiles, 3 student logins, 4 `e2e.teacher.*` accounts, 3 enrollments, 9
+  activation tokens), none of which any other row referenced. They were removed in one transaction
+  that deleted exactly those rows and would have rolled back unless the legitimate data still
+  matched a snapshot taken beforehand: 11 accounts (identical fingerprints of email, password hash,
+  status, session version and first-login flag), 60 students, 180 enrollments, 180 risk alerts,
+  1,440 grades and 3,240 attendance records. No reset or re-seed. A stray test-database directory
+  at the repository root (from running vitest outside `server/`) was deleted after confirming no
+  PostgreSQL process used it; the test setup now resolves that directory from the server package.
 
 Problems found while building it:
 
