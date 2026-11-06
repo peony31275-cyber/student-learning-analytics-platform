@@ -1,12 +1,14 @@
 import { useMutation } from '@tanstack/react-query';
 import { type FormEvent, useState } from 'react';
 import { Link } from 'react-router';
+import { useSignOut } from '../components/Layout';
 import { Card, EmptyState, Field, FormError, PageHeader } from '../components/ui';
 import { useAuth } from '../hooks/useAuth';
 import { api } from '../services/api';
 
 export function AccountPage() {
-  const { user, setUser, logout } = useAuth();
+  const { user, setUser } = useAuth();
+  const signOut = useSignOut();
   const [form, setForm] = useState({ currentPassword: '', newPassword: '' });
   const change = useMutation({
     mutationFn: () => api.auth.changePassword(form.currentPassword, form.newPassword),
@@ -66,7 +68,7 @@ export function AccountPage() {
           <p className="muted" style={{ marginTop: 0 }}>
             Signed in as {user?.firstName} {user?.lastName} ({user?.role.toLowerCase()}).
           </p>
-          <button className="btn" onClick={() => void logout()}>
+          <button className="btn" onClick={() => void signOut()}>
             Sign out
           </button>
         </Card>

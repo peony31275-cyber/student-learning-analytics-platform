@@ -129,6 +129,35 @@ describe('Authentication', () => {
       expect((await agent.get('/api/v1/auth/me')).status).toBe(401);
     });
 
+    it('logout expires the cookie with the same attributes it was set with', async () => {
+      const user = await createUser(schoolId, 'TEACHER');
+      const login = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ email: user.email, password: PASSWORD });
+      const setCookie = String(login.headers['set-cookie']);
+      expect(setCookie).toMatch(/sla_token=[^;]+;.*Path=\/.*HttpOnly.*SameSite=Lax/);
+
+      const res = await request(app).post('/api/v1/auth/logout').set('Cookie', setCookie);
+      expect(res.status).toBe(204);
+      const cleared = String(res.headers['set-cookie']);
+      // A browser only deletes a cookie when name, Path (and Domain) match.
+      expect(cleared).toMatch(/^sla_token=;/);
+      expect(cleared).toContain('Path=/');
+      expect(cleared).toContain('Expires=Thu, 01 Jan 1970 00:00:00 GMT');
+      expect(cleared).toContain('HttpOnly');
+      expect(cleared).toContain('SameSite=Lax');
+    });
+
+    it('protected endpoints reject a request after logout (no cookie)', async () => {
+      const user = await createUser(schoolId, 'TEACHER');
+      const agent = await loginAs(user.email);
+      expect((await agent.get('/api/v1/risk-alerts')).status).toBe(200);
+      await agent.post('/api/v1/auth/logout');
+      const res = await agent.get('/api/v1/risk-alerts');
+      expect(res.status).toBe(401);
+      expect(res.body.error.code).toBe('UNAUTHORIZED');
+    });
+
     it('logout-all revokes tokens issued earlier (tokenVersion)', async () => {
       const user = await createUser(schoolId, 'ADMIN');
       const oldToken = signToken({ sub: user.id, role: 'ADMIN', tv: 0 });

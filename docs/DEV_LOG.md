@@ -36,8 +36,8 @@ evaluated 180 enrollments in 349 ms on a local database: 139 LOW, 15 MEDIUM, 26 
 **Tests** (`npm test`):
 
 ```
-server  Test Files 5 passed (5)   Tests 84 passed (84)
-web     Test Files 1 passed (1)   Tests 8 passed (8)
+server  Test Files 5 passed (5)   Tests 86 passed (86)
+web     Test Files 2 passed (2)   Tests 14 passed (14)
 ```
 
 **Server coverage** (`npm run test:coverage -w server`): statements 89.18% (882/989),
@@ -70,6 +70,18 @@ with 0 console errors under the CSP, recorded attendance, reloaded and confirmed
    in effects. They were refactored into keyed child components initialized with `useState(initial)`.
 6. **Date locale.** Charts followed the OS locale (Chinese month names); they are pinned to `en-US` for a
    consistent English UI.
+7. **Sign-out did not return to the login page (found in manual testing).** After "Sign out" the
+   shell and the user's name stayed on screen, and protected pages showed "Authentication
+   required". Cause: `logout()` called `queryClient.clear()`, which also removed the `['me']`
+   query object that `useQuery` in `AuthProvider` was subscribed to; the following
+   `setQueryData(['me'], null)` created a new query nobody observed, so React never re-rendered
+   with `user = null`. (Login seemed fine only because the login mutation re-rendered the
+   provider.) Fixed by updating the session query in place and removing only the other queries
+   (`switchSession`), which is also used by the global 401 handler. Explicit sign-out navigates
+   to `/login` without remembering the previous page. Six RTL regression tests (5 failed before
+   the fix) and two server tests for cookie clearing; verified in headless Edge for a teacher and
+   a student: redirect, `Set-Cookie` expiry, no cookie left, Back button and direct URLs stay on
+   `/login`, `/auth/me` returns 401.
 
 ## Not yet done
 

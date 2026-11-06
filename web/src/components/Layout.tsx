@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, Navigate, Outlet, useLocation } from 'react-router';
+import { NavLink, Navigate, Outlet, useLocation, useNavigate } from 'react-router';
 import { useAuth } from '../hooks/useAuth';
 import type { Role } from '../types/api';
 import { Loading } from './ui';
@@ -16,6 +16,20 @@ const NAV: { to: string; label: string; roles: Role[] }[] = [
 ];
 
 export const homeFor = (role: Role) => (role === 'STUDENT' ? '/me' : '/dashboard');
+
+/**
+ * Explicit sign-out: end the session, then go to /login *without* remembering
+ * the current page (unlike an expired session), so the next person signing in
+ * on this browser is not sent to the previous user's screen.
+ */
+export function useSignOut() {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+  return async () => {
+    await logout();
+    navigate('/login', { replace: true });
+  };
+}
 
 /** Route guard: unauthenticated users go to /login (remembering where they were headed). */
 export function RequireAuth() {
@@ -45,7 +59,8 @@ export function RequireRole({ roles }: { roles: Role[] }) {
 }
 
 function AppShell() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
+  const signOut = useSignOut();
   const [open, setOpen] = useState(false);
   if (!user) return null;
   const links = NAV.filter((n) => n.roles.includes(user.role));
@@ -73,7 +88,7 @@ function AppShell() {
               {user.role.charAt(0) + user.role.slice(1).toLowerCase()} · {user.email}
             </div>
           </div>
-          <button className="btn btn-sm" onClick={() => void logout()}>
+          <button className="btn btn-sm" onClick={() => void signOut()}>
             Sign out
           </button>
         </div>
