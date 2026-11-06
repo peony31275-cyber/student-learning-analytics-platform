@@ -22,12 +22,12 @@ risk-engine configuration.
 
 ```
  Browser (React SPA)                          Server (Node.js / Express 5)                 PostgreSQL (Neon)
-┌─────────────────────────┐   /api/v1/*    ┌──────────────────────────────────────┐   ┌──────────────────┐
-│ pages → hooks/queries   │ ─────────────► │ routes → authenticate → requireRole  │   │ 11 tables         │
-│ TanStack Query cache    │  JSON + cookie │   → controllers (Zod parse)          │   │ FKs, unique and   │
-│ Recharts charts         │ ◄───────────── │   → services (business rules,        │──►│ composite indexes │
-│ httpOnly cookie session │                │      access scoping, transactions)   │   │ Prisma migrations │
-└─────────────────────────┘                │   → domain/risk (pure rule engine)   │   └──────────────────┘
+┌─────────────────────────┐   /api/v1/*    ┌──────────────────────────────────────┐   ┌──────────────────────┐
+│ pages → hooks/queries   │ ─────────────► │ routes → authenticate → requireRole  │   │ 12 business tables   │
+│ TanStack Query cache    │  JSON + cookie │   → controllers (Zod parse)          │   │ + _prisma_migrations │
+│ Recharts charts         │ ◄───────────── │   → services (business rules,        │──►│ FKs, unique and      │
+│ httpOnly cookie session │                │      access scoping, transactions)   │   │ composite indexes    │
+└─────────────────────────┘                │   → domain/risk (pure rule engine)   │   └──────────────────────┘
                                            │ error-handler → { error: {…} }       │
                                            └──────────────────────────────────────┘
 ```
@@ -92,20 +92,23 @@ secure delivery channel such as email is added.
 
 The demo accounts above are not affected: existing accounts have `mustChangePassword = false`.
 
-To use Neon instead of the local database, put the Neon connection strings in `DATABASE_URL`
-and `DIRECT_URL` (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
+`server/.env` always points at the local database, so `npm run dev`, the tests and `npm run db:seed`
+never touch the cloud. The Neon connection strings live in `server/.env.neon` (git-ignored) and are
+only read by `npm run db:neon:status` / `db:neon:deploy`. `db:migrate`, `db:seed` and `db:reset`
+refuse to run against anything but localhost (see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)).
 
 ## Scripts
 
-| Command                                                       | Purpose                                                                                      |
-| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `npm run dev`                                                 | API (tsx watch) + web (Vite) together                                                        |
-| `npm test`                                                    | Server tests (starts its own throwaway PostgreSQL on port 5434), then web tests              |
-| `npm run lint` / `npm run typecheck` / `npm run format:check` | Static checks for both workspaces                                                            |
-| `npm run build`                                               | Prisma generate + `tsc` for the server, type-check + Vite build for the web                  |
-| `npm start`                                                   | Production: apply pending migrations, then serve API + built SPA                             |
-| `npm run db:seed -w server`                                   | Reset and seed demo data (refuses `NODE_ENV=production` unless `SEED_ALLOW_PRODUCTION=true`) |
-| `npm run test:coverage -w server`                             | Server tests with a coverage report                                                          |
+| Command                                                       | Purpose                                                                                                                                     |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                                                 | API (tsx watch) + web (Vite) together                                                                                                       |
+| `npm test`                                                    | Server tests (starts its own throwaway PostgreSQL on port 5434), then web tests                                                             |
+| `npm run lint` / `npm run typecheck` / `npm run format:check` | Static checks for both workspaces                                                                                                           |
+| `npm run build`                                               | Prisma generate + `tsc` for the server, type-check + Vite build for the web                                                                 |
+| `npm start`                                                   | Production: apply pending migrations, then serve API + built SPA                                                                            |
+| `npm run db:seed -w server`                                   | Reset and seed demo data in the local database (refuses non-local databases, and `NODE_ENV=production` unless `SEED_ALLOW_PRODUCTION=true`) |
+| `npm run db:neon:status -w server` / `db:neon:deploy`         | Migration status of Neon / apply pending migrations to Neon, using `server/.env.neon`                                                       |
+| `npm run test:coverage -w server`                             | Server tests with a coverage report                                                                                                         |
 
 ## Testing
 

@@ -20,5 +20,13 @@
     "outDir": "dist",
     "noEmit": true
   },
-  "include": ["src", "tests", "prisma", "scripts", "prisma.config.ts", "vitest.config.ts"]
+  "include": [
+    "src",
+    "tests",
+    "prisma",
+    "scripts",
+    "prisma.config.ts",
+    "prisma.neon.config.ts",
+    "vitest.config.ts"
+  ]
 }

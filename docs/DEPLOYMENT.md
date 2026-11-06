@@ -22,21 +22,32 @@ Browser ──HTTPS──► Render web service (Express: /api + static SPA) ─
 
    Both look like `postgresql://USER:PASSWORD@HOST/neondb?sslmode=require`. Keep `sslmode=require`.
 
-> Never commit these strings. They only go into `server/.env` (git-ignored) and the Render
-> dashboard.
+> Never commit these strings. They only go into `server/.env.neon` (git-ignored) and the Render
+> dashboard, never into `server/.env`.
 
-## 2. (Optional) Point your local setup at Neon and run the migrations
+## 2. Keep the Neon strings in `server/.env.neon` and run the migrations from your machine
+
+`server/.env` stays pointed at the local database, so `npm run dev`, the tests and
+`npm run db:seed` never reach Neon. Put the two Neon strings in their own file, which the `.env.*`
+rule in `.gitignore` keeps out of Git:
 
 ```bash
-# server/.env
+# server/.env.neon
 DATABASE_URL="postgresql://…-pooler…/neondb?sslmode=require"
 DIRECT_URL="postgresql://…/neondb?sslmode=require"
 ```
 
+Only two scripts read it, through `server/prisma.neon.config.ts`, which also refuses a `DIRECT_URL`
+that is pooled or not on Neon:
+
 ```bash
-npm run db:deploy -w server       # applies prisma/migrations to Neon
-npm run db:seed -w server         # demo data (only if you want it on this database)
+npm run db:neon:status -w server   # which migrations Neon has
+npm run db:neon:deploy -w server   # apply prisma/migrations to Neon (prisma migrate deploy)
 ```
+
+The scripts that reset or wipe data (`db:migrate`, `db:seed`, `db:reset`) refuse to run unless
+`DATABASE_URL` and `DIRECT_URL` point at localhost, and the test suite refuses a non-local
+`TEST_DATABASE_URL`. A cloud string pasted into the wrong file stops them before anything happens.
 
 Prisma 7 notes: there is no `url` in `schema.prisma` any more. The CLI reads the connection from
 `server/prisma.config.ts` (DIRECT_URL, falling back to DATABASE_URL), and the app connects with
@@ -69,16 +80,27 @@ git push -u origin main
 `NODE_ENV=production`, `WEB_DIST_DIR=web/dist` and the rest are already set in `render.yaml`.
 Leave `AUTH_RATE_LIMIT_MAX` and `AUTH_RATE_LIMIT_WINDOW_MINUTES` unset in production: the defaults
 (20 failed sign-in attempts per IP per 15 minutes) are the production values. The 1-minute window
-in `.env.example` is for local development only. 4. Deploy. `npm start` runs `prisma migrate deploy` before starting the server, so the schema is
-always current.
+in `.env.example` is for local development only.
 
-### Seeding demo data in production (optional)
+4. Deploy. `npm start` runs `prisma migrate deploy` before starting the server, so the schema is
+   always current.
 
-The seed refuses to run when `NODE_ENV=production`. To load demo data into a fresh Neon database
-once, run it from your machine against Neon (step 2), or in the Render shell:
+### Seeding demo data on Neon (optional, once)
+
+The seed starts with a `TRUNCATE` of every application table, so run it only on a new, empty
+database. `npm run db:seed` is local-only. To seed Neon on purpose, load the Neon strings explicitly
+from `server/`. Later `--env-file` values override earlier ones, so the Neon URLs replace the local
+ones and the rest of `.env` still applies:
 
 ```bash
-SEED_ALLOW_PRODUCTION=true npm run db:seed -w server
+npx tsx --env-file=.env --env-file=.env.neon prisma/seed.ts
+```
+
+In the Render shell the Neon strings are already the environment, and the seed refuses
+`NODE_ENV=production` unless told otherwise:
+
+```bash
+cd server && SEED_ALLOW_PRODUCTION=true npx tsx prisma/seed.ts
 ```
 
 ## 5. Verify the deployment

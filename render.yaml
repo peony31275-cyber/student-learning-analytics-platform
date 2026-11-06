@@ -5,7 +5,7 @@ services:
     name: learning-analytics
     runtime: node
     plan: free
-    region: virginia # pick the region closest to your Neon database
+    region: oregon # same region as the Neon database (AWS us-west-2); change both together
     buildCommand: npm ci --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
